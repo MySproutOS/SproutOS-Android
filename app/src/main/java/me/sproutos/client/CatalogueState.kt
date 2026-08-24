@@ -55,10 +55,34 @@ class CatalogueState {
     /** Set by the activity. Null in tests and previews, where neither action is exercised. */
     var context: Context? = null
 
+    /**
+     * Download the APK if it is not already here, verify it, and hand it to the installer.
+     *
+     * The verification is the reason this is not two lines. A signed URL says the platform issued
+     * it, not that what came back is intact — and a truncated response over a bad connection is the
+     * ordinary case long before a hostile one is.
+     */
     fun install(app: App) {
         val target = context ?: return
         val file = File(target.cacheDir, "apks/${app.packageName}.apk")
-        if (!file.exists()) return
+
+        if (!file.exists()) {
+            when (val result = downloadApk(app, file, ::openDownload)) {
+                is DownloadResult.Ok -> Unit
+
+                is DownloadResult.DigestMismatch -> {
+                    // Named for what it is. "Download failed" would send somebody to retry a thing
+                    // that will fail the same way, and this is the one error worth looking at.
+                    error = "That download did not match what SproutOS published. Nothing was installed."
+                    return
+                }
+
+                is DownloadResult.Failed -> {
+                    error = "Could not download ${app.label}: ${result.reason}"
+                    return
+                }
+            }
+        }
 
         /*
           A content URI, never a `file://` one.

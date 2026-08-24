@@ -67,10 +67,10 @@ is tested separately, and an instrumented test would need an emulator for less t
 
 ## Not built yet
 
-- **The fetch.** `CatalogueState` accepts a parsed result; nothing calls the API. The endpoint is
-  `GET /v1/android/catalogue`.
-- **Downloading an APK.** `install()` hands a file to the system installer and expects it to already
-  be in the cache. The download itself, its progress, and verifying the `sha256` the catalogue
-  carries are not written — and verifying it is not optional, because the whole point of shipping a
-  digest is that somebody checks it.
-- **Sign-in.** The personal tab is empty until the request carries a session.
+- **Sign-in.** `fetchCatalogue` takes a `Session` and sends a bearer token when there is one, but
+  nothing obtains one. The Public tab works without it; the Personal tab is empty until a token is
+  there. The platform's OAuth flow is a browser redirect, so this needs a Custom Tab and somewhere
+  to keep the result.
+- **Progress.** A download reports nothing until it finishes, which on a phone and a large APK is a
+  button that appears to do nothing for a while.
+- **Where the API is.** `apiBase` is passed in and nothing sets it yet.
