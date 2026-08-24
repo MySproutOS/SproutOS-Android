@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Only the download directory, not the whole cache: a provider that shared everything would
+         hand any file this app has ever written to whoever asked for a URI. -->
+    <cache-path name="downloads" path="apks/" />
+</paths>

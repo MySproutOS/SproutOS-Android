@@ -41,3 +41,36 @@ this source. That is a real friction point and worth designing for rather than a
 Not built. This repository exists so that the decisions above are written down where the code will
 be, and so the main repository can carry it as a submodule — which keeps a coding agent's context in
 one working tree.
+
+## Building
+
+Needs a JDK 21 and the Android SDK (platform 35, build-tools 35).
+
+```bash
+echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
+gradle :app:testDebugUnitTest   # the catalogue contract, from this side
+gradle :app:assembleDebug       # an installable, unsigned APK
+```
+
+The release build is deliberately **unsigned**. SproutOS signs every APK it distributes, including
+this one, on a machine that is not a CI runner — see `docs/apk-signing.md` in the platform
+repository. A signing config here would be a second key, in a place the first one is not.
+
+## What is tested and what is not
+
+`CatalogueTest` covers the contract with the platform: what this build accepts, what it ignores, and
+what it refuses. The platform's own tests cover what it emits. Both sides need one, because a rename
+on either is a tab that shows nothing and explains nothing.
+
+The Compose screens have no tests. They are a list, a search field and two buttons over logic that
+is tested separately, and an instrumented test would need an emulator for less than it costs.
+
+## Not built yet
+
+- **The fetch.** `CatalogueState` accepts a parsed result; nothing calls the API. The endpoint is
+  `GET /v1/android/catalogue`.
+- **Downloading an APK.** `install()` hands a file to the system installer and expects it to already
+  be in the cache. The download itself, its progress, and verifying the `sha256` the catalogue
+  carries are not written — and verifying it is not optional, because the whole point of shipping a
+  digest is that somebody checks it.
+- **Sign-in.** The personal tab is empty until the request carries a session.
