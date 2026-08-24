@@ -46,6 +46,11 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("androidx.core:core-ktx:1.15.0")
+    // Custom Tabs: the system browser, in this app's window. A WebView here could read the password
+    // as it is typed, which is why every OAuth guideline for native apps forbids one.
+    implementation("androidx.browser:browser:1.8.0")
+    // Keys in the Android keystore, so the token is not readable from a backup or an adb pull.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")

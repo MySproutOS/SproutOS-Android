@@ -16,10 +16,26 @@
 
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTask"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Where the browser sends the sign-in back to.
+
+              A custom scheme, which any app can also claim — so the `state` check in `Auth.kt` is
+              what actually establishes that a callback came from the flow this app started, not
+              the fact that Android delivered it here. `singleTask` so returning from the browser
+              resumes the running activity rather than stacking a second copy behind it.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sproutos" android:host="auth" />
             </intent-filter>
         </activity>
 

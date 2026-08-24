@@ -56,6 +56,19 @@ The release build is deliberately **unsigned**. SproutOS signs every APK it dist
 this one, on a machine that is not a CI runner — see `docs/apk-signing.md` in the platform
 repository. A signing config here would be a second key, in a place the first one is not.
 
+## Sign-in
+
+The system browser through Custom Tabs, never a WebView: a WebView in this app could read the
+password as it is typed, which is why every OAuth guideline for native apps forbids one.
+
+PKCE is not optional here. A public client cannot keep a secret — anything compiled into this APK
+is readable by anyone who downloads it — so the authorization code is all that stands between an
+attacker and a session, and PKCE binds it to a verifier that never leaves the device.
+
+The callback arrives on a custom scheme, which any app can also claim. The `state` check is what
+actually establishes that a redirect came from the flow this app started; Android delivering it
+here proves nothing.
+
 ## What is tested and what is not
 
 `CatalogueTest` covers the contract with the platform: what this build accepts, what it ignores, and
@@ -67,10 +80,9 @@ is tested separately, and an instrumented test would need an emulator for less t
 
 ## Not built yet
 
-- **Sign-in.** `fetchCatalogue` takes a `Session` and sends a bearer token when there is one, but
-  nothing obtains one. The Public tab works without it; the Personal tab is empty until a token is
-  there. The platform's OAuth flow is a browser redirect, so this needs a Custom Tab and somewhere
-  to keep the result.
+- **The sign-in button.** `Auth.kt` has the whole flow and `SessionStore` keeps the result, but
+  nothing in the UI launches the Custom Tab or handles the returning intent yet. The platform's
+  `/v1/oauth/authorize` also has to accept `sproutos://auth/callback` as a registered redirect.
 - **Progress.** A download reports nothing until it finishes, which on a phone and a large APK is a
   button that appears to do nothing for a while.
 - **Where the API is.** `apiBase` is passed in and nothing sets it yet.
