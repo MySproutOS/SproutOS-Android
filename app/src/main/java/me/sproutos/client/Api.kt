@@ -55,3 +55,27 @@ fun openDownload(url: String): InputStream {
     connection.readTimeout = 60_000
     return connection.inputStream
 }
+
+/**
+ * Exchange an authorization code for a token.
+ *
+ * Returns null on anything other than a token, so the caller reports "signing in did not complete"
+ * rather than storing an empty string and behaving as though it worked.
+ */
+fun exchangeCode(apiBase: String, clientId: String, code: CallbackResult.Code): String? =
+    try {
+        val connection = URL("${apiBase.trimEnd('/')}/v1/oauth/token").openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 20_000
+
+        connection.outputStream.use {
+            it.write(tokenRequestBody(code.code, code.verifier, clientId).toByteArray())
+        }
+
+        connection.inputStream.use { parseToken(it.readBytes().decodeToString()) }
+    } catch (_: Exception) {
+        null
+    }

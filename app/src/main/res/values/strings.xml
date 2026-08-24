@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SproutOS</string>
+    <!-- Overridden per build. A debug build points at a laptop; a release build at production. -->
+    <string name="api_base">https://api.sproutos.me</string>
 </resources>

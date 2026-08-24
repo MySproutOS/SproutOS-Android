@@ -52,8 +52,85 @@ class CatalogueState {
         }
     }
 
-    /** Set by the activity. Null in tests and previews, where neither action is exercised. */
+    /** Set by the activity. Null in tests and previews, where no Android action is exercised. */
     var context: Context? = null
+
+    /** The sign-in attempt in flight, if any. Held only until the callback arrives. */
+    var pending: PendingAuth? = null
+        private set
+
+    var session: Session = Session(null)
+        private set
+
+    val signedIn: Boolean get() = session.token != null
+
+    fun restore(store: SessionStore) {
+        session = store.read()
+    }
+
+    /**
+     * Open the system browser at the sign-in page.
+     *
+     * A Custom Tab, not a WebView: a WebView in this app could read the password as it is typed.
+     */
+    fun signIn(apiBase: String, clientId: String) {
+        val target = context ?: return
+        val attempt = beginAuth()
+        pending = attempt
+
+        androidx.browser.customtabs.CustomTabsIntent.Builder()
+            .build()
+            .launchUrl(target, Uri.parse(authorizeUrl(apiBase, clientId, attempt)))
+    }
+
+    /**
+     * Handle the redirect the browser sent back.
+     *
+     * `pending` is cleared whatever the outcome. A verifier that outlives its attempt is one an
+     * injected callback could be paired with later, and a state that stays valid is a state that
+     * can be replayed.
+     */
+    fun completeSignIn(
+        uri: String,
+        store: SessionStore,
+        exchange: (CallbackResult.Code) -> String?,
+    ) {
+        val attempt = pending
+        pending = null
+
+        when (val result = readCallback(uri, attempt)) {
+            is CallbackResult.Code -> {
+                val token = exchange(result)
+                if (token == null) {
+                    error = "Signing in did not complete. Try again."
+                    return
+                }
+                store.write(token)
+                session = Session(token)
+                error = null
+            }
+
+            is CallbackResult.Denied ->
+                // Not alarming. Somebody pressed cancel, which is a thing people do.
+                error = null
+
+            CallbackResult.StateMismatch ->
+                /*
+                  A redirect that did not come from a flow this app started.
+
+                  Any app can claim the `sproutos://` scheme, so this is the case that check exists
+                  for. Said out loud rather than ignored: a customer seeing it should know somebody
+                  sent their phone a sign-in it did not ask for.
+                */
+                error = "That sign-in did not come from SproutOS. Nothing was changed."
+        }
+    }
+
+    fun signOut(store: SessionStore) {
+        store.clear()
+        session = Session(null)
+        catalogue = null
+    }
 
     /**
      * Download the APK if it is not already here, verify it, and hand it to the installer.
