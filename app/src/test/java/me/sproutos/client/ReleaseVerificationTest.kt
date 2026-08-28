@@ -62,4 +62,23 @@ class ReleaseVerificationTest {
             certificateSha256("abc".toByteArray()),
         )
     }
+
+    @Test
+    fun `active installs disable both app rows and self update`() {
+        assertTrue(!installButtonEnabled(InstallState.Downloading(1, 2), InstallAction.Update))
+        assertTrue(!installButtonEnabled(InstallState.Verifying, InstallAction.Install))
+        assertTrue(installButtonEnabled(InstallState.AwaitingPermission, InstallAction.Update))
+        assertTrue(!installButtonEnabled(InstallState.Idle, InstallAction.RefuseDowngrade))
+    }
+
+    @Test
+    fun `install progress is bounded and every waiting state explains itself`() {
+        assertEquals("Downloading 50%", installStatusText(InstallState.Downloading(1, 2)))
+        assertEquals("Downloading 100%", installStatusText(InstallState.Downloading(4, 2)))
+        assertTrue(installStatusText(InstallState.Verifying)!!.contains("Verifying"))
+        assertTrue(installStatusText(InstallState.AwaitingPermission)!!.contains("Allow installs"))
+        assertTrue(installStatusText(InstallState.AwaitingInstaller)!!.contains("installation"))
+        assertEquals("network failed", installStatusText(InstallState.Failed("network failed")))
+        assertEquals(null, installStatusText(InstallState.Idle))
+    }
 }

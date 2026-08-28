@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same sprout mark and colours as apps/website/src/app/icon.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,94.5V56.7"
+        android:strokeColor="#5EE39A"
+        android:strokeLineCap="round"
+        android:strokeWidth="8.55" />
+    <path
+        android:fillColor="#6B5EE39A"
+        android:pathData="M54,59.4C54,44.55 43.2,33.3 27,31.05C24.75,47.25 35.1,60.75 54,59.4Z"
+        android:strokeColor="#5EE39A"
+        android:strokeLineJoin="round"
+        android:strokeWidth="6.75" />
+    <path
+        android:fillColor="#5EE39A"
+        android:pathData="M54,55.8C54.9,39.6 65.7,27.9 81.9,25.65C83.7,42.75 72.9,56.25 54,55.8Z"
+        android:strokeColor="#5EE39A"
+        android:strokeLineJoin="round"
+        android:strokeWidth="6.75" />
+    <path
+        android:pathData="M20.25,94.5H87.75"
+        android:strokeAlpha="0.45"
+        android:strokeColor="#5EE39A"
+        android:strokeLineCap="round"
+        android:strokeWidth="8.55" />
+</vector>

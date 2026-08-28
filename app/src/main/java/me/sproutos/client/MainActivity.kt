@@ -27,6 +27,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -195,12 +200,16 @@ fun CatalogueScreen(
             }
             state.catalogue?.clientUpdate?.let { release ->
                 if (state.actionFor(release) == InstallAction.Update) {
+                    val operation =
+                        state.installState[release.packageName] ?: InstallState.Idle
                     Button(
                         onClick = { onInstall(release) },
+                        enabled = installButtonEnabled(operation, InstallAction.Update),
                         modifier = Modifier.padding(top = 8.dp),
                     ) {
                         Text("Update SproutOS to ${release.versionName}")
                     }
+                    InstallStatus(operation)
                     if (release.required) {
                         Text("This update is required to keep using the catalogue.")
                     }
@@ -216,7 +225,14 @@ fun CatalogueScreen(
             val entries = search(state.entriesFor(tab), query)
 
             when {
-                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = 24.dp))
+                state.error != null ->
+                    Text(
+                        state.error!!,
+                        modifier =
+                            Modifier.padding(top = 24.dp).semantics {
+                                liveRegion = LiveRegionMode.Polite
+                            },
+                    )
 
                 state.loading && state.catalogue == null -> Unit
 
@@ -247,11 +263,23 @@ fun CatalogueScreen(
                             val apps = entries.filterIsInstance<Entry.Installable>()
                             val sites = entries.filterIsInstance<Entry.Website>()
                             if (apps.isNotEmpty()) {
-                                item { Text("Apps", style = MaterialTheme.typography.titleLarge) }
+                                item {
+                                    Text(
+                                        "Apps",
+                                        modifier = Modifier.semantics { heading() },
+                                        style = MaterialTheme.typography.titleLarge,
+                                    )
+                                }
                                 items(apps) { entry -> EntryRow(entry, state, onInstall) }
                             }
                             if (sites.isNotEmpty()) {
-                                item { Text("Websites", style = MaterialTheme.typography.titleLarge) }
+                                item {
+                                    Text(
+                                        "Websites",
+                                        modifier = Modifier.semantics { heading() },
+                                        style = MaterialTheme.typography.titleLarge,
+                                    )
+                                }
                                 items(sites) { entry -> EntryRow(entry, state, onInstall) }
                             }
                         } else {
@@ -273,51 +301,50 @@ private fun EntryRow(entry: Entry, state: CatalogueState, onInstall: (ReleaseMet
             is Entry.Installable -> {
                 val operation = state.installState[entry.app.packageName] ?: InstallState.Idle
                 val action = state.actionFor(entry.app)
-                if (operation is InstallState.Downloading) {
-                    val percent =
-                        ((operation.bytes * 100) / operation.total.coerceAtLeast(1))
-                            .coerceIn(0, 100)
-                    Text("Downloading $percent%", modifier = Modifier.padding(top = 8.dp))
-                } else if (operation is InstallState.Verifying) {
-                    Text(
-                        "Verifying package, version, and signature…",
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                } else if (operation is InstallState.AwaitingPermission) {
-                    Text(
-                        "Allow installs from SproutOS, then tap again.",
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                } else if (operation is InstallState.AwaitingInstaller) {
-                    Text("Complete the installation in Android.", modifier = Modifier.padding(top = 8.dp))
-                } else if (operation is InstallState.Failed) {
-                    Text(operation.reason, modifier = Modifier.padding(top = 8.dp))
-                }
+                val actionLabel =
+                    when (action) {
+                        InstallAction.Install -> "Install"
+                        InstallAction.Update -> "Update"
+                        InstallAction.Open -> "Open"
+                        InstallAction.RefuseDowngrade -> "Newer version installed"
+                        InstallAction.RefuseDifferentSigner -> "Different app installed"
+                    }
+                InstallStatus(operation)
                 Button(
                     onClick = { onInstall(entry.app) },
-                    enabled =
-                        operation !is InstallState.Downloading &&
-                            operation !is InstallState.Verifying &&
-                            action != InstallAction.RefuseDowngrade &&
-                            action != InstallAction.RefuseDifferentSigner,
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    Text(
-                        when (action) {
-                            InstallAction.Install -> "Install"
-                            InstallAction.Update -> "Update"
-                            InstallAction.Open -> "Open"
-                            InstallAction.RefuseDowngrade -> "Newer version installed"
-                            InstallAction.RefuseDifferentSigner -> "Different app installed"
+                    enabled = installButtonEnabled(operation, action),
+                    modifier =
+                        Modifier.padding(top = 8.dp).semantics {
+                            contentDescription = "$actionLabel ${entry.app.label}"
                         },
-                    )
+                ) {
+                    Text(actionLabel)
                 }
             }
 
             is Entry.Website ->
-                Button(onClick = { state.open(entry.site) }, modifier = Modifier.padding(top = 8.dp)) {
+                Button(
+                    onClick = { state.open(entry.site) },
+                    modifier =
+                        Modifier.padding(top = 8.dp).semantics {
+                            contentDescription = "Open ${entry.site.name}"
+                        },
+                ) {
                     Text("Open")
                 }
         }
+    }
+}
+
+@Composable
+private fun InstallStatus(operation: InstallState) {
+    installStatusText(operation)?.let { status ->
+        Text(
+            status,
+            modifier =
+                Modifier.padding(top = 8.dp).semantics {
+                    liveRegion = LiveRegionMode.Polite
+                },
+        )
     }
 }

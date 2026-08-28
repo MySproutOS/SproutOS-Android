@@ -54,3 +54,25 @@ fun installAction(
         installedVersion == availableVersion -> InstallAction.Open
         else -> InstallAction.RefuseDowngrade
     }
+
+/** The same gate is used by catalogue rows and by the SproutOS self-update banner. */
+fun installButtonEnabled(operation: InstallState, action: InstallAction): Boolean =
+    operation !is InstallState.Downloading &&
+        operation !is InstallState.Verifying &&
+        action != InstallAction.RefuseDowngrade &&
+        action != InstallAction.RefuseDifferentSigner
+
+/** Visible and screen-reader-announced feedback for every asynchronous install stage. */
+fun installStatusText(operation: InstallState): String? =
+    when (operation) {
+        InstallState.Idle -> null
+        is InstallState.Downloading -> {
+            val percent =
+                ((operation.bytes * 100) / operation.total.coerceAtLeast(1)).coerceIn(0, 100)
+            "Downloading $percent%"
+        }
+        InstallState.Verifying -> "Verifying package, version, and signature…"
+        InstallState.AwaitingPermission -> "Allow installs from SproutOS, then tap again."
+        InstallState.AwaitingInstaller -> "Complete the installation in Android."
+        is InstallState.Failed -> operation.reason
+    }
