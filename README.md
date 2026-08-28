@@ -23,15 +23,21 @@ this way** — that is what lets a customer publish without their own Play Conso
 number, or the verification wait. One project's key never signs another project's APK.
 
 It also means SproutOS is accountable for what is distributed under its name, so apps are reviewed
-before publication and can be removed. That is not a formality: from 2026-09-30 in Brazil, Indonesia,
-Singapore and Thailand, and globally in 2027, only apps registered by a verified developer install
-on certified Android devices.
+before publication and can be removed. That is not a formality: Google's current [Android developer
+verification timeline](https://developer.android.com/developer-verification) starts regional
+enforcement for participating stores in Brazil, Indonesia, Singapore, and Thailand on September 30,
+2026, then expands globally to all apps on certified devices in 2027. SproutOS registers its
+directly distributed package names through Android Developer Console.
 
-## This client cannot ship through Play Store
+## Why this client is distributed directly
 
-Google's policy does not allow a store app to be distributed through the Play Store. The client is
-downloaded directly from sproutos.me — the F-Droid model, and the reason the website needs a
-download page.
+The client installs apps and updates itself outside Google Play. Google's general [Policy
+Coverage](https://support.google.com/googleplay/android-developer/answer/10146128) and [Device and
+Network Abuse](https://support.google.com/googleplay/android-developer/answer/16559646) rules do not
+allow that behavior in an ordinary Play listing. Google now has a separate US [Third-party App
+Store on Play program](https://support.google.com/googleplay/android-developer/answer/17118006), but
+SproutOS is not enrolled in it. The current client is downloaded directly from sproutos.me — the
+F-Droid model, and the reason the website needs a download page.
 
 Installing an app therefore needs `REQUEST_INSTALL_PACKAGES` and the user allowing installs from
 this source. That is a real friction point and worth designing for rather than apologising about.
