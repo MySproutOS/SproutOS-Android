@@ -1,4 +1,4 @@
-package me.sproutos.client
+package com.sproutos.store
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

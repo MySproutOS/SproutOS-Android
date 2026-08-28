@@ -1,4 +1,4 @@
-package me.sproutos.client
+package com.sproutos.store
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -155,7 +155,7 @@ private fun validateCatalogue(catalogue: Catalogue): String? {
         }
     }
     catalogue.clientUpdate?.let { release ->
-        if (release.packageName != "me.sproutos.client") {
+        if (release.packageName != "com.sproutos.store") {
             return "the SproutOS client package is invalid"
         }
         if (release.versionCode <= 0 || release.versionName.isBlank()) {
