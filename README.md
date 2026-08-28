@@ -15,12 +15,12 @@ Two tabs at the bottom:
 Private by default. An app a customer builds is theirs and appears to nobody else unless they
 publish it.
 
-## SproutOS signs every app
+## SproutOS signs every app with its own key
 
-Apps are signed with SproutOS's key and served from S3 through CloudFront, with private APKs behind
-signed URLs. **Ur LLC is the developer of record for every app published this way** — that is what
-lets a customer publish without their own Play Console account, a D-U-N-S number, or the
-verification wait.
+Each Android project receives an independent signing key. Signed APKs are served from private
+object storage behind expiring URLs. **Ur LLC is the developer of record for every app published
+this way** — that is what lets a customer publish without their own Play Console account, a D-U-N-S
+number, or the verification wait. One project's key never signs another project's APK.
 
 It also means SproutOS is accountable for what is distributed under its name, so apps are reviewed
 before publication and can be removed. That is not a formality: from 2026-09-30 in Brazil, Indonesia,
@@ -38,9 +38,10 @@ this source. That is a real friction point and worth designing for rather than a
 
 ## Status
 
-Not built. This repository exists so that the decisions above are written down where the code will
-be, and so the main repository can carry it as a submodule — which keeps a coding agent's context in
-one working tree.
+The client implements the catalogue v2 contract, native PKCE sign-in, authenticated personal
+catalogue refresh, verified APK install/update, unknown-source permission guidance, and self-update
+when the platform publishes `clientUpdate`. A live signed-release-to-emulator acceptance run still
+depends on the platform signer, Android registration, and DB-backed client release being deployed.
 
 ## Building
 
@@ -51,6 +52,9 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 gradle :app:testDebugUnitTest   # the catalogue contract, from this side
 gradle :app:assembleDebug       # an installable, unsigned APK
 ```
+
+Debug builds use the emulator host bridge (`10.0.2.2`) for the website and API. Release builds use
+`https://sproutos.me` and `https://api.sproutos.me` and disable cleartext traffic.
 
 The release build is deliberately **unsigned**. SproutOS signs every APK it distributes, including
 this one, on a machine that is not a CI runner — see `docs/apk-signing.md` in the platform
@@ -78,11 +82,13 @@ on either is a tab that shows nothing and explains nothing.
 The Compose screens have no tests. They are a list, a search field and two buttons over logic that
 is tested separately, and an instrumented test would need an emulator for less than it costs.
 
-## Not built yet
+## Platform contract
 
-- **The sign-in button.** `Auth.kt` has the whole flow and `SessionStore` keeps the result, but
-  nothing in the UI launches the Custom Tab or handles the returning intent yet. The platform's
-  `/v1/oauth/authorize` also has to accept `sproutos://auth/callback` as a registered redirect.
-- **Progress.** A download reports nothing until it finishes, which on a phone and a large APK is a
-  button that appears to do nothing for a while.
-- **Where the API is.** `apiBase` is passed in and nothing sets it yet.
+- Browser authorization is `https://sproutos.me/oauth/authorize`; token exchange and catalogue are
+  on `https://api.sproutos.me`.
+- The first-party public client requests only `project:read`. Its seed must keep the exact
+  `sproutos://auth/callback` redirect and that default scope.
+- Catalogue version 2 carries authoritative Android app/project IDs, the immutable generated
+  package name, monotonic version code, signed-object digest and size, and signing-certificate
+  digest. The client refuses inconsistent metadata and verifies all of it again from the APK.
+- `clientUpdate`, when present, comes from the DB-backed latest signed SproutOS client release.

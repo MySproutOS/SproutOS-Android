@@ -27,6 +27,9 @@ import kotlinx.serialization.json.Json
 /** The redirect the platform sends the browser back to. Registered in the manifest. */
 const val REDIRECT_URI: String = "sproutos://auth/callback"
 
+/** The least privilege needed to populate the signed-in Personal catalogue. */
+val REQUIRED_SCOPES: List<String> = listOf("project:read")
+
 data class PendingAuth(val state: String, val verifier: String)
 
 private val random = SecureRandom()
@@ -60,7 +63,7 @@ fun challengeFor(verifier: String): String =
 
 private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
-fun authorizeUrl(apiBase: String, clientId: String, pending: PendingAuth): String {
+fun authorizeUrl(webBase: String, clientId: String, pending: PendingAuth): String {
     val query =
         listOf(
             "response_type" to "code",
@@ -71,10 +74,11 @@ fun authorizeUrl(apiBase: String, clientId: String, pending: PendingAuth): Strin
             // S256, never `plain`. A plain challenge *is* the verifier, which defeats the point of
             // sending one at all.
             "code_challenge_method" to "S256",
+            "scope" to REQUIRED_SCOPES.joinToString(" "),
         )
             .joinToString("&") { (key, value) -> "$key=${encode(value)}" }
 
-    return "${apiBase.trimEnd('/')}/v1/oauth/authorize?$query"
+    return "${webBase.trimEnd('/')}/oauth/authorize?$query"
 }
 
 /** The query parameters of a redirect, without pulling in `android.net.Uri`. */
@@ -116,6 +120,9 @@ sealed interface CallbackResult {
  * dropped.
  */
 fun readCallback(uri: String, pending: PendingAuth?): CallbackResult {
+    if (uri.substringBefore('?').substringBefore('#') != REDIRECT_URI) {
+        return CallbackResult.StateMismatch
+    }
     val parsed = queryParams(uri)
 
     if (pending == null) return CallbackResult.StateMismatch
@@ -132,13 +139,46 @@ fun readCallback(uri: String, pending: PendingAuth?): CallbackResult {
 }
 
 @Serializable
-data class TokenResponse(val access_token: String, val token_type: String = "Bearer")
+data class TokenResponse(
+    val access_token: String,
+    val token_type: String = "Bearer",
+    val expires_in: Long,
+    val refresh_token: String,
+    val scope: String,
+)
+
+data class OAuthSession(
+    val accessToken: String,
+    val refreshToken: String,
+    val expiresAtEpochSeconds: Long,
+    val scopes: Set<String>,
+) {
+    fun accessTokenAt(nowEpochSeconds: Long): String? =
+        accessToken.takeIf { nowEpochSeconds < expiresAtEpochSeconds - 30 }
+}
 
 private val tokenJson = Json { ignoreUnknownKeys = true }
 
-fun parseToken(body: String): String? =
+fun parseToken(body: String, nowEpochSeconds: Long): OAuthSession? =
     try {
-        tokenJson.decodeFromString<TokenResponse>(body).access_token.ifBlank { null }
+        val response = tokenJson.decodeFromString<TokenResponse>(body)
+        val scopes = response.scope.split(' ').filter(String::isNotBlank).toSet()
+        if (
+            response.access_token.isBlank() ||
+                response.refresh_token.isBlank() ||
+                !response.token_type.equals("Bearer", ignoreCase = true) ||
+                response.expires_in <= 0 ||
+                !scopes.containsAll(REQUIRED_SCOPES)
+        ) {
+            null
+        } else {
+            OAuthSession(
+                accessToken = response.access_token,
+                refreshToken = response.refresh_token,
+                expiresAtEpochSeconds = Math.addExact(nowEpochSeconds, response.expires_in),
+                scopes = scopes,
+            )
+        }
     } catch (_: Exception) {
         null
     }
@@ -151,5 +191,15 @@ fun tokenRequestBody(code: String, verifier: String, clientId: String): String =
         "redirect_uri" to REDIRECT_URI,
         "client_id" to clientId,
         "code_verifier" to verifier,
+    )
+        .joinToString("&") { (key, value) -> "$key=${encode(value)}" }
+
+/** Refreshes an expired access token without broadening the original grant. */
+fun refreshRequestBody(refreshToken: String, clientId: String): String =
+    listOf(
+        "grant_type" to "refresh_token",
+        "refresh_token" to refreshToken,
+        "client_id" to clientId,
+        "scope" to REQUIRED_SCOPES.joinToString(" "),
     )
         .joinToString("&") { (key, value) -> "$key=${encode(value)}" }

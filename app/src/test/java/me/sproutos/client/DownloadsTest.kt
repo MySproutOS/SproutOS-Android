@@ -15,16 +15,19 @@ class DownloadsTest {
 
     // sha256 of `payload`, computed by the implementation and pinned here so a change to the
     // hashing is a failing test rather than a silently different answer.
-    private val digest = hashingCopy(ByteArrayInputStream(payload), java.io.ByteArrayOutputStream())
+    private val digest = hashingCopy(ByteArrayInputStream(payload), java.io.ByteArrayOutputStream()).sha256
 
     private fun app(sha: String) =
         App(
-            packageName = "me.sproutos.example",
+            androidAppId = "019d40f0-31d4-7394-90e2-3e20eb3350d8",
+            projectId = "019d40f0-31d4-7394-90e2-3e20eb3350d9",
+            packageName = "me.sproutos.app.p019d40f031d4739490e23e20eb3350d9",
             label = "Example",
             versionName = "1.0.0",
             versionCode = 1,
             sha256 = sha,
             sizeBytes = payload.size.toLong(),
+            certificateSha256 = "1".repeat(64),
             downloadUrl = "https://cdn/example.apk",
         )
 
@@ -68,7 +71,7 @@ class DownloadsTest {
 
         val result = downloadApk(app(digest), file) { ByteArrayInputStream(half) }
 
-        assertTrue(result is DownloadResult.DigestMismatch)
+        assertTrue(result is DownloadResult.SizeMismatch)
         assertFalse(file.exists())
     }
 
@@ -87,14 +90,22 @@ class DownloadsTest {
     }
 
     @Test
-    fun `compares the digest without caring about case`() {
-        // The platform emits lowercase hex; another producer might not, and a case mismatch is not
-        // a corrupted download.
+    fun `stops a response once it exceeds the published size`() {
+        val file = target()
+        val tooSmall = app(digest).copy(sizeBytes = 2)
+        val result = downloadApk(tooSmall, file) { ByteArrayInputStream(payload) }
+
+        assertTrue(result is DownloadResult.Failed)
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun `does not normalize non-canonical release metadata`() {
         val file = target()
         val result = downloadApk(app(digest.uppercase()), file) { ByteArrayInputStream(payload) }
 
-        assertTrue(result is DownloadResult.Ok)
-        file.delete()
+        assertTrue(result is DownloadResult.DigestMismatch)
+        assertFalse(file.exists())
     }
 
     @Test
