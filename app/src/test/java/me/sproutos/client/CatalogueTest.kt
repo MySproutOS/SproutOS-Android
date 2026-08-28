@@ -14,18 +14,24 @@ import org.junit.Test
 class CatalogueTest {
     private val body = """
         {
-          "version": 1,
+          "version": 2,
           "generatedAt": "2026-08-24T12:00:00.000Z",
           "expiresAt": "2026-08-24T13:00:00.000Z",
           "public": { "apps": [
-            { "packageName": "me.sproutos.notes", "label": "Notes", "summary": "Take notes",
-              "versionName": "1.2.0", "versionCode": 7, "sha256": "abc", "sizeBytes": 1024,
+            { "androidAppId":"019d40f0-31d4-7394-90e2-3e20eb3350d1",
+              "projectId":"019d40f0-31d4-7394-90e2-3e20eb3350d2",
+              "packageName": "me.sproutos.app.p019d40f031d4739490e23e20eb3350d2", "label": "Notes", "summary": "Take notes",
+              "versionName": "1.2.0", "versionCode": 7, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "sizeBytes": 1024,
+              "certificateSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
               "downloadUrl": "https://cdn/notes.apk" }
           ] },
           "personal": {
             "apps": [
-              { "packageName": "me.sproutos.mine", "label": "My App", "summary": "",
-                "versionName": "0.1.0", "versionCode": 1, "sha256": "def", "sizeBytes": 2048,
+              { "androidAppId":"019d40f0-31d4-7394-90e2-3e20eb3350d3",
+                "projectId":"019d40f0-31d4-7394-90e2-3e20eb3350d4",
+                "packageName": "me.sproutos.app.p019d40f031d4739490e23e20eb3350d4", "label": "My App", "summary": "",
+                "versionName": "0.1.0", "versionCode": 1, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "sizeBytes": 2048,
+                "certificateSha256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
                 "downloadUrl": "https://cdn/mine.apk" }
             ],
             "sites": [ { "name": "My Site", "url": "https://mine.sproutos.me", "summary": "" } ]
@@ -48,7 +54,7 @@ class CatalogueTest {
     @Test
     fun `ignores a field it has never heard of`() {
         // The platform will add fields, and that must not break every installed copy of this app.
-        val extended = body.replace("\"version\": 1", "\"version\": 1, \"somethingNew\": true")
+        val extended = body.replace("\"version\": 2", "\"version\": 2, \"somethingNew\": true")
 
         assertTrue(parseCatalogue(extended) is CatalogueResult.Ok)
     }
@@ -59,11 +65,11 @@ class CatalogueTest {
           The dangerous kind of incompatibility. A section this build does not know about looks like
           an empty one, and the customer concludes their apps are gone — so it says so instead.
         */
-        val newer = body.replace("\"version\": 1", "\"version\": 2")
+        val newer = body.replace("\"version\": 2", "\"version\": 3")
         val result = parseCatalogue(newer)
 
-        assertTrue(result is CatalogueResult.TooNew)
-        assertEquals(2, (result as CatalogueResult.TooNew).version)
+        assertTrue(result is CatalogueResult.UnsupportedVersion)
+        assertEquals(3, (result as CatalogueResult.UnsupportedVersion).version)
     }
 
     @Test
@@ -77,13 +83,47 @@ class CatalogueTest {
         // What an unauthenticated reader gets. The tab should say there is nothing there rather
         // than fail to load.
         val anonymous = """
-            {"version":1,"generatedAt":"t","expiresAt":"t",
+            {"version":2,"generatedAt":"t","expiresAt":"t",
              "public":{"apps":[]},"personal":{"apps":[],"sites":[]}}
         """.trimIndent()
 
         val result = parseCatalogue(anonymous)
         assertTrue(result is CatalogueResult.Ok)
         assertTrue(personalEntries((result as CatalogueResult.Ok).catalogue).isEmpty())
+    }
+
+    @Test
+    fun `refuses package names not derived from the immutable project id`() {
+        val forged = body.replace(
+            "me.sproutos.app.p019d40f031d4739490e23e20eb3350d2",
+            "me.attacker.lookalike",
+        )
+        assertTrue(parseCatalogue(forged) is CatalogueResult.Malformed)
+    }
+
+    @Test
+    fun `reads only a signed DB backed SproutOS client update`() {
+        val withUpdate =
+            body.replace(
+                "\"public\":",
+                """
+                "clientUpdate": {
+                  "packageName":"me.sproutos.client", "versionName":"0.2.0", "versionCode":2,
+                  "sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                  "sizeBytes":4096,
+                  "certificateSha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "downloadUrl":"https://cdn/sproutos.apk", "required":true
+                },
+                "public":
+                """.trimIndent(),
+            )
+        val parsed = parseCatalogue(withUpdate) as CatalogueResult.Ok
+        assertEquals("me.sproutos.client", parsed.catalogue.clientUpdate?.packageName)
+        assertEquals(2L, parsed.catalogue.clientUpdate?.versionCode)
+        assertEquals(true, parsed.catalogue.clientUpdate?.required)
+
+        val forged = withUpdate.replace("me.sproutos.client", "me.attacker.client")
+        assertTrue(parseCatalogue(forged) is CatalogueResult.Malformed)
     }
 
     @Test

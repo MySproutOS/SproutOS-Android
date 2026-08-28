@@ -16,20 +16,29 @@ import java.security.MessageDigest
 /** Where the catalogue lives. */
 fun catalogueUrl(apiBase: String): String = "${apiBase.trimEnd('/')}/v1/android/catalogue"
 
-/** Lowercase hex of a stream's sha256, computed while it is being written. */
-fun hashingCopy(source: InputStream, sink: OutputStream): String {
+data class CopyResult(val sha256: String, val bytes: Long)
+
+/** Lowercase hex and byte count, computed while the stream is written. */
+fun hashingCopy(
+    source: InputStream,
+    sink: OutputStream,
+    progress: (Long) -> Unit = {},
+): CopyResult {
     val digest = MessageDigest.getInstance("SHA-256")
     val buffer = ByteArray(64 * 1024)
+    var copied = 0L
 
     while (true) {
         val read = source.read(buffer)
         if (read <= 0) break
         digest.update(buffer, 0, read)
         sink.write(buffer, 0, read)
+        copied += read
+        progress(copied)
     }
     sink.flush()
 
-    return digest.digest().joinToString("") { "%02x".format(it) }
+    return CopyResult(digest.digest().joinToString("") { "%02x".format(it) }, copied)
 }
 
 sealed interface DownloadResult {
@@ -44,6 +53,8 @@ sealed interface DownloadResult {
      * later.
      */
     data class DigestMismatch(val expected: String, val actual: String) : DownloadResult
+
+    data class SizeMismatch(val expected: Long, val actual: Long) : DownloadResult
 
     data class Failed(val reason: String) : DownloadResult
 }
@@ -61,25 +72,47 @@ sealed interface DownloadResult {
  * file that was hashed.
  */
 fun downloadApk(
-    app: App,
+    app: ReleaseMetadata,
     into: File,
+    progress: (Long, Long) -> Unit = { _, _ -> },
     open: (String) -> InputStream,
 ): DownloadResult {
     into.parentFile?.mkdirs()
+    val partial = File(into.parentFile, "${into.name}.part")
+    partial.delete()
 
-    val actual =
+    val copied =
         try {
             open(app.downloadUrl).use { source ->
-                into.outputStream().use { sink -> hashingCopy(source, sink) }
+                partial.outputStream().use { sink ->
+                    hashingCopy(source, sink) { bytes ->
+                        if (bytes > app.sizeBytes) {
+                            throw IllegalArgumentException("download exceeded its published size")
+                        }
+                        progress(bytes, app.sizeBytes)
+                    }
+                }
             }
         } catch (cause: Exception) {
-            into.delete()
+            partial.delete()
             return DownloadResult.Failed(cause.message ?: "the download failed")
         }
 
-    if (!actual.equals(app.sha256, ignoreCase = true)) {
-        into.delete()
-        return DownloadResult.DigestMismatch(app.sha256, actual)
+    if (copied.bytes != app.sizeBytes) {
+        partial.delete()
+        return DownloadResult.SizeMismatch(app.sizeBytes, copied.bytes)
+    }
+    if (copied.sha256 != app.sha256) {
+        partial.delete()
+        return DownloadResult.DigestMismatch(app.sha256, copied.sha256)
+    }
+    if (into.exists() && !into.delete()) {
+        partial.delete()
+        return DownloadResult.Failed("could not replace the cached release")
+    }
+    if (!partial.renameTo(into)) {
+        partial.delete()
+        return DownloadResult.Failed("could not finish the downloaded release")
     }
 
     return DownloadResult.Ok(into)

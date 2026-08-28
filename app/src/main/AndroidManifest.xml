@@ -9,10 +9,29 @@
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+      Android 11 filters package-manager lookups unless the caller declares what it needs to see.
+      Every installable SproutOS project has a launcher activity, but its generated package name is
+      not known when this APK is built, so an intent query is the narrow alternative to the broad
+      QUERY_ALL_PACKAGES permission. Without this, getPackageInfo() reports a deployed app as not
+      installed and the client cannot enforce its own signer/downgrade checks or offer Open.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
-        android:label="SproutOS"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/Theme.SproutOS"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:usesCleartextTraffic="${usesCleartextTraffic}">
 
         <activity
             android:name=".MainActivity"

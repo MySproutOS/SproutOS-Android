@@ -24,10 +24,12 @@ class AuthTest {
           so there is no secret standing behind it.
         */
         val pending = beginAuth()
-        val url = authorizeUrl("https://api.sproutos.me", "sproutos-android", pending)
+        val url = authorizeUrl("https://sproutos.me", "sproutos-android", pending)
 
+        assertTrue(url.startsWith("https://sproutos.me/oauth/authorize?"))
         assertTrue(url.contains("code_challenge_method=S256"))
         assertTrue(url.contains("code_challenge="))
+        assertTrue(url.contains("scope=project%3Aread"))
         assertTrue("the verifier must not be in the URL", !url.contains(pending.verifier))
     }
 
@@ -75,6 +77,13 @@ class AuthTest {
         val result = readCallback("sproutos://auth/callback?code=x&state=y", null)
 
         assertEquals(CallbackResult.StateMismatch, result)
+    }
+
+    @Test
+    fun `refuses the right state on the wrong callback URI`() {
+        val pending = beginAuth()
+        val forged = "attacker://auth/callback?code=x&state=${pending.state}"
+        assertEquals(CallbackResult.StateMismatch, readCallback(forged, pending))
     }
 
     @Test
@@ -127,10 +136,30 @@ class AuthTest {
 
     @Test
     fun `reads a token and refuses a response that has none`() {
-        assertEquals("t0ken", parseToken("""{"access_token":"t0ken","token_type":"Bearer"}"""))
-        assertNull(parseToken("""{"access_token":""}"""))
-        assertNull(parseToken("{}"))
-        assertNull(parseToken("not json"))
+        val body = """{"access_token":"t0ken","token_type":"Bearer","expires_in":3600,"refresh_token":"refresh","scope":"project:read"}"""
+        val parsed = parseToken(body, 100)
+        assertEquals("t0ken", parsed?.accessToken)
+        assertEquals(3700L, parsed?.expiresAtEpochSeconds)
+        assertNull(parseToken(body.replace("project:read", "org:read"), 100))
+        assertNull(parseToken("{}", 100))
+        assertNull(parseToken("not json", 100))
+    }
+
+    @Test
+    fun `refresh requests preserve the narrow Android scope`() {
+        val body = refreshRequestBody("refresh", "client")
+        assertTrue(body.contains("grant_type=refresh_token"))
+        assertTrue(body.contains("refresh_token=refresh"))
+        assertTrue(body.contains("scope=project%3Aread"))
+        assertTrue(!body.contains("client_secret"))
+    }
+
+    @Test
+    fun `does not use an access token at or near expiry`() {
+        val session = OAuthSession("access", "refresh", 1000, setOf("project:read"))
+        assertEquals("access", session.accessTokenAt(969))
+        assertNull(session.accessTokenAt(970))
+        assertNull(session.accessTokenAt(1000))
     }
 
     @Test
