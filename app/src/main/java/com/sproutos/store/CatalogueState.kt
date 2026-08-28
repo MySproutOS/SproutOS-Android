@@ -1,4 +1,4 @@
-package me.sproutos.client
+package com.sproutos.store
 
 import android.content.Context
 import android.content.Intent

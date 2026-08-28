@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "me.sproutos.client"
+    namespace = "com.sproutos.store"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "me.sproutos.client"
+        applicationId = "com.sproutos.store"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

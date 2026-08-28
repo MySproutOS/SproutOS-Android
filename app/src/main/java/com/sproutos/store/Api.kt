@@ -1,4 +1,4 @@
-package me.sproutos.client
+package com.sproutos.store
 
 import java.io.InputStream
 import java.net.HttpURLConnection

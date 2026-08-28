@@ -1,6 +1,6 @@
 @file:Suppress("DEPRECATION")
 
-package me.sproutos.client
+package com.sproutos.store
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences

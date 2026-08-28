@@ -1,4 +1,4 @@
-package me.sproutos.client
+package com.sproutos.store
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -108,7 +108,7 @@ class CatalogueTest {
                 "\"public\":",
                 """
                 "clientUpdate": {
-                  "packageName":"me.sproutos.client", "versionName":"0.2.0", "versionCode":2,
+                  "packageName":"com.sproutos.store", "versionName":"0.2.0", "versionCode":2,
                   "sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
                   "sizeBytes":4096,
                   "certificateSha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
@@ -118,11 +118,11 @@ class CatalogueTest {
                 """.trimIndent(),
             )
         val parsed = parseCatalogue(withUpdate) as CatalogueResult.Ok
-        assertEquals("me.sproutos.client", parsed.catalogue.clientUpdate?.packageName)
+        assertEquals("com.sproutos.store", parsed.catalogue.clientUpdate?.packageName)
         assertEquals(2L, parsed.catalogue.clientUpdate?.versionCode)
         assertEquals(true, parsed.catalogue.clientUpdate?.required)
 
-        val forged = withUpdate.replace("me.sproutos.client", "me.attacker.client")
+        val forged = withUpdate.replace("com.sproutos.store", "me.attacker.client")
         assertTrue(parseCatalogue(forged) is CatalogueResult.Malformed)
     }
 
