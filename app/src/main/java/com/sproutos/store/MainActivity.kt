@@ -45,9 +45,13 @@ import kotlinx.coroutines.withContext
  * That is why an unauthenticated visitor sees an empty personal tab with a sentence in it rather
  * than a sign-in wall: somebody deciding whether to use SproutOS should be able to look first.
  */
-enum class Tab(val label: String) {
-    Public("Public"),
-    Personal("Personal"),
+enum class Tab(val label: String, val description: String, val entryLabel: String) {
+    Public("Public", "Public apps are available to everyone.", "Public"),
+    Personal(
+        "Personal",
+        "Apps and sites available through your SproutOS organizations.",
+        "Yours",
+    ),
 }
 
 class MainActivity : ComponentActivity() {
@@ -221,6 +225,12 @@ fun CatalogueScreen(
                 label = { Text("Search") },
                 modifier = Modifier.fillMaxWidth(),
             )
+            Text(
+                tab.description,
+                modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             val entries = search(state.entriesFor(tab), query)
 
@@ -270,7 +280,9 @@ fun CatalogueScreen(
                                         style = MaterialTheme.typography.titleLarge,
                                     )
                                 }
-                                items(apps) { entry -> EntryRow(entry, state, onInstall) }
+                                items(apps) { entry ->
+                                    EntryRow(entry, tab.entryLabel, state, onInstall)
+                                }
                             }
                             if (sites.isNotEmpty()) {
                                 item {
@@ -280,10 +292,14 @@ fun CatalogueScreen(
                                         style = MaterialTheme.typography.titleLarge,
                                     )
                                 }
-                                items(sites) { entry -> EntryRow(entry, state, onInstall) }
+                                items(sites) { entry ->
+                                    EntryRow(entry, tab.entryLabel, state, onInstall)
+                                }
                             }
                         } else {
-                            items(entries) { entry -> EntryRow(entry, state, onInstall) }
+                            items(entries) { entry ->
+                                EntryRow(entry, tab.entryLabel, state, onInstall)
+                            }
                         }
                     }
             }
@@ -292,8 +308,18 @@ fun CatalogueScreen(
 }
 
 @Composable
-private fun EntryRow(entry: Entry, state: CatalogueState, onInstall: (ReleaseMetadata) -> Unit) {
+private fun EntryRow(
+    entry: Entry,
+    visibility: String,
+    state: CatalogueState,
+    onInstall: (ReleaseMetadata) -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Text(
+            visibility,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
         Text(entry.title, style = MaterialTheme.typography.titleMedium)
         Text(entry.subtitle, style = MaterialTheme.typography.bodySmall)
 

@@ -40,6 +40,17 @@ class CatalogueTest {
     """.trimIndent()
 
     @Test
+    fun `personal catalogue labels describe entitlement without claiming runtime privacy`() {
+        assertEquals("Public", Tab.Public.entryLabel)
+        assertEquals("Yours", Tab.Personal.entryLabel)
+        assertEquals(
+            "Apps and sites available through your SproutOS organizations.",
+            Tab.Personal.description,
+        )
+        assertTrue(!Tab.Personal.description.contains("private", ignoreCase = true))
+    }
+
+    @Test
     fun `reads what the platform emits`() {
         val result = parseCatalogue(body)
         assertTrue(result is CatalogueResult.Ok)
