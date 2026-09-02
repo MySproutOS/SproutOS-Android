@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
 import org.junit.Test
 
@@ -47,6 +48,47 @@ class StoreNavigationInstrumentedTest {
         compose.onNodeWithText("Automatic updates").assertIsDisplayed()
         compose.onNodeWithTag("sprout:settings:client-switch").assertIsDisplayed()
         compose.onNodeWithTag("sprout:settings:apps-switch").assertIsDisplayed()
+    }
+
+    @Test
+    fun completedSignInRecomposesSettingsWithoutRestartingTheApp() {
+        val state = CatalogueState()
+        val store = SessionStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        store.clear()
+
+        compose.setContent {
+            SproutTheme {
+                SproutStoreApp(
+                    state = state,
+                    onSignIn = {},
+                    onSignOut = {},
+                    onRefresh = {},
+                    onInstall = {},
+                    onClientAutomaticUpdates = {},
+                    onAppAutomaticUpdates = {},
+                    onEnableUpdateNotifications = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("sprout:nav:settings").performClick()
+        compose.onNodeWithText("Not signed in").assertIsDisplayed()
+
+        compose.runOnIdle {
+            state.acceptSession(
+                OAuthSession(
+                    accessToken = "access-token",
+                    refreshToken = "refresh-token",
+                    expiresAtEpochSeconds = Long.MAX_VALUE,
+                    scopes = setOf("project:read"),
+                ),
+                store,
+            )
+        }
+
+        compose.onNodeWithText("Signed in").assertIsDisplayed()
+        compose.onNodeWithText("Sign out").assertIsDisplayed()
+        store.clear()
     }
 
     private fun catalogueJson(): String =
