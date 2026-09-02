@@ -45,8 +45,6 @@ jobs:
       attestations: write
     env:
       EXPECTED_PACKAGE_NAME: com.sproutos.store
-      EXPECTED_VERSION_CODE: "4"
-      EXPECTED_VERSION_NAME: 0.2.1
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -88,8 +86,8 @@ jobs:
           version_code=$(sed -n "s/^package:.* versionCode='\([^']*\)'.*/\1/p" <<<"$badging")
           version_name=$(sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p" <<<"$badging")
           test "$package_name" = "$EXPECTED_PACKAGE_NAME"
-          test "$version_code" = "$EXPECTED_VERSION_CODE"
-          test "$version_name" = "$EXPECTED_VERSION_NAME"
+          test -n "$version_code"
+          test -n "$version_name"
           test "$tag_version" = "$version_name"
           test "$tag_name" = "v${version_name}"
 
@@ -133,8 +131,8 @@ jobs:
             --arg commit "$GITHUB_SHA" \
             --arg tag "$tag_name" \
             --arg package "$EXPECTED_PACKAGE_NAME" \
-            --arg version_name "$EXPECTED_VERSION_NAME" \
-            --argjson version_code "$EXPECTED_VERSION_CODE" '
+            --arg version_name "$version_name" \
+            --argjson version_code "$version_code" '
               .sourceRepository == $repository and
               .sourceCommit == $commit and
               .sourceTag == $tag and
