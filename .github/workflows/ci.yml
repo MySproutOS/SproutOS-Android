@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
         with:
           gradle-version: "8.14.3"
       - run: gradle :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleRelease
@@ -30,3 +30,110 @@ jobs:
             echo "release APK was unexpectedly signed in GitHub Actions" >&2
             exit 1
           fi
+
+  # A main-branch run is the only source an operator may submit to the on-prem signer. Pull-request
+  # artifacts are deliberately ineligible: their source is not the reviewed, merged commit.
+  release-handoff:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      EXPECTED_PACKAGE_NAME: com.sproutos.store
+      EXPECTED_VERSION_CODE: "3"
+      EXPECTED_VERSION_NAME: 0.2.0
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+        with:
+          gradle-version: "8.14.3"
+      - name: Build the unsigned release from a clean tree
+        run: gradle clean :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleRelease
+      - name: Verify and package the operator handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+          source_apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f "$source_apk"
+          if "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$source_apk"; then
+            echo "release APK was unexpectedly signed in GitHub Actions" >&2
+            exit 1
+          fi
+
+          badging=$("$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$source_apk")
+          package_name=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<<"$badging")
+          version_code=$(sed -n "s/^package:.* versionCode='\([^']*\)'.*/\1/p" <<<"$badging")
+          version_name=$(sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p" <<<"$badging")
+          test "$package_name" = "$EXPECTED_PACKAGE_NAME"
+          test "$version_code" = "$EXPECTED_VERSION_CODE"
+          test "$version_name" = "$EXPECTED_VERSION_NAME"
+
+          artifact="sproutos-store-${version_name}-v${version_code}-unsigned.apk"
+          mkdir dist
+          cp "$source_apk" "dist/$artifact"
+          (cd dist && sha256sum "$artifact" > SHA256SUMS && sha256sum -c SHA256SUMS)
+          digest=$(sha256sum "dist/$artifact" | awk '{print $1}')
+          size_bytes=$(stat -c '%s' "dist/$artifact")
+          python3 - \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$artifact" "$digest" "$size_bytes" \
+            "$package_name" "$version_name" "$version_code" > dist/release-manifest.json <<'PY'
+          import json
+          import sys
+
+          repository, commit, artifact, digest, size, package, version_name, version_code = sys.argv[1:]
+          json.dump(
+              {
+                  "schemaVersion": 1,
+                  "sourceRepository": repository,
+                  "sourceCommit": commit,
+                  "artifact": artifact,
+                  "sha256": digest,
+                  "sizeBytes": int(size),
+                  "packageName": package,
+                  "versionName": version_name,
+                  "versionCode": int(version_code),
+                  "signed": False,
+              },
+              sys.stdout,
+              indent=2,
+              sort_keys=True,
+          )
+          sys.stdout.write("\n")
+          PY
+      - name: Attest the unsigned APK build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: dist/*.apk
+      - name: Upload the immutable operator handoff
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sproutos-android-unsigned-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: false
+          retention-days: 90
+      - name: Record the immutable artifact
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          {
+            echo '### Android operator handoff'
+            echo
+            echo "Artifact ID: \`$ARTIFACT_ID\`"
+            echo "Archive SHA-256: \`$ARTIFACT_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
