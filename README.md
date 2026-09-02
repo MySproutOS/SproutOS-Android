@@ -107,7 +107,7 @@ repository. A signing config here would be a second key, in a place the first on
 Never submit a locally selected APK or a pull-request build to the production signer. Pull requests
 and ordinary `main` pushes run verification only. After a release change is reviewed and merged, an
 operator creates the canonical release tag `v<versionName>` on that reviewed `main` commit (for
-example, `v0.2.0`). Only that tag can run `release-handoff` and create the immutable artifact
+example, `v0.2.1`). Only that tag can run `release-handoff` and create the immutable artifact
 `sproutos-android-unsigned-<tag>-<40-character-commit>`.
 
 The release-handoff job requires the tag's commit to be reachable from `main`, checks that the tag's
@@ -124,7 +124,7 @@ silently becoming eligible for production signing. Create and push the tag only 
 
 ```bash
 repository=MySproutOS/SproutOS-Android
-version=0.2.0
+version=0.2.1
 tag="v$version"
 git fetch origin main --tags
 revision=$(git rev-parse origin/main)
@@ -153,7 +153,7 @@ select the ordinary `main` run for the same commit:
 
 ```bash
 repository=MySproutOS/SproutOS-Android
-tag=v0.2.0
+tag=v0.2.1
 expected_version=${tag#v}
 revision=$(gh api "repos/$repository/commits/$tag" --jq .sha)
 runs_json=$(gh run list --repo "$repository" --workflow ci.yml --commit "$revision" \
