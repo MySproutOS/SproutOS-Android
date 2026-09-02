@@ -45,17 +45,23 @@ class AutomaticUpdateSettingsInstrumentedTest {
         context.getSharedPreferences("sproutos.automatic-updates", 0).edit().clear().commit()
         val preferences = AutomaticUpdatePreferences(context)
         val observed = mutableListOf<String?>()
-        val changes = CountDownLatch(2)
+        val pendingChange = CountDownLatch(1)
+        val clearedChange = CountDownLatch(1)
         val subscription =
             preferences.observePendingMessage { message ->
                 observed += message
-                changes.countDown()
+                if (observed.size == 1) pendingChange.countDown() else clearedChange.countDown()
             }
 
         try {
             preferences.setPendingMessage("Android needs confirmation.")
+            assertTrue(pendingChange.await(5, TimeUnit.SECONDS))
+            assertEquals(listOf("Android needs confirmation."), observed)
+
+            // PackageInstaller reports success only after the user has handled the pending action;
+            // wait for that first receiver-style callback before exercising the later clear.
             preferences.setPendingMessage(null)
-            assertTrue(changes.await(5, TimeUnit.SECONDS))
+            assertTrue(clearedChange.await(5, TimeUnit.SECONDS))
             assertEquals(listOf("Android needs confirmation.", null), observed)
         } finally {
             subscription.close()
