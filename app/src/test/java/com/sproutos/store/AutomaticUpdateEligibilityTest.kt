@@ -96,4 +96,24 @@ class AutomaticUpdateEligibilityTest {
             ),
         )
     }
+
+    @Test
+    fun `installed app candidates exclude client package and retain highest app version`() {
+        val clientEntry = release.copy(packageName = "com.sproutos.store", versionCode = 99)
+        val old = release.copy(versionCode = 1)
+        val current = release.copy(versionCode = 2)
+        val catalogue =
+            Catalogue(
+                version = SUPPORTED_VERSION,
+                generatedAt = "2026-09-01T00:00:00Z",
+                expiresAt = "2026-09-02T00:00:00Z",
+                public = PublicSection(apps = listOf(clientEntry, old)),
+                personal = PersonalSection(apps = listOf(current)),
+            )
+
+        assertEquals(
+            listOf(current),
+            selectInstalledAppUpdateCandidates(catalogue, "com.sproutos.store"),
+        )
+    }
 }

@@ -31,10 +31,7 @@ class AutomaticUpdateWorker(
     ): Result {
         var transientFailure = false
         if (settings.installedApps) {
-            val releases =
-                (catalogue.public.apps + catalogue.personal.apps)
-                    .groupBy { it.packageName }
-                    .mapNotNull { (_, versions) -> versions.maxByOrNull { it.versionCode } }
+            val releases = selectInstalledAppUpdateCandidates(catalogue, applicationContext.packageName)
             for (release in releases) {
                 when (queueVerifiedUpdate(release)) {
                     QueueResult.TransientFailure -> transientFailure = true
@@ -112,6 +109,16 @@ class AutomaticUpdateWorker(
         TransientFailure,
     }
 }
+
+/** Self-update has one authoritative metadata source and must remain the worker's final commit. */
+fun selectInstalledAppUpdateCandidates(
+    catalogue: Catalogue,
+    clientPackageName: String,
+): List<App> =
+    (catalogue.public.apps + catalogue.personal.apps)
+        .filterNot { it.packageName == clientPackageName }
+        .groupBy { it.packageName }
+        .mapNotNull { (_, versions) -> versions.maxByOrNull { it.versionCode } }
 
 private fun authenticatedCatalogue(context: Context): CatalogueResult {
     val sessionStore = SessionStore(context)
