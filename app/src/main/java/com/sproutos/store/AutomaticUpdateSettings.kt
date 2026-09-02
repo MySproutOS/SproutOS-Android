@@ -1,6 +1,7 @@
 package com.sproutos.store
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -38,6 +39,16 @@ class AutomaticUpdatePreferences(context: Context) {
         preferences.edit().apply {
             if (message == null) remove(PENDING_MESSAGE) else putString(PENDING_MESSAGE, message)
         }.apply()
+    }
+
+    /** Keep an already-rendered activity in sync with PackageInstaller receiver callbacks. */
+    fun observePendingMessage(onChange: (String?) -> Unit): AutoCloseable {
+        val listener =
+            SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key == PENDING_MESSAGE) onChange(pendingMessage())
+            }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        return AutoCloseable { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
     fun recordSession(

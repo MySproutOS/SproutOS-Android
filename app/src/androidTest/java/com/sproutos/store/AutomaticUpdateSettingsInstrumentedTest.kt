@@ -10,6 +10,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class AutomaticUpdateSettingsInstrumentedTest {
@@ -35,6 +37,29 @@ class AutomaticUpdateSettingsInstrumentedTest {
             emptyList<TrackedInstallSession>(),
             preferences.staleSessions(nowMillis = 10_000, maximumAgeMillis = 0),
         )
+    }
+
+    @Test
+    fun pendingMessageObserverSeesReceiverStyleSetAndClear() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.getSharedPreferences("sproutos.automatic-updates", 0).edit().clear().commit()
+        val preferences = AutomaticUpdatePreferences(context)
+        val observed = mutableListOf<String?>()
+        val changes = CountDownLatch(2)
+        val subscription =
+            preferences.observePendingMessage { message ->
+                observed += message
+                changes.countDown()
+            }
+
+        try {
+            preferences.setPendingMessage("Android needs confirmation.")
+            preferences.setPendingMessage(null)
+            assertTrue(changes.await(5, TimeUnit.SECONDS))
+            assertEquals(listOf("Android needs confirmation.", null), observed)
+        } finally {
+            subscription.close()
+        }
     }
 
     @Test

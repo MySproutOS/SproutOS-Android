@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
     private val state = CatalogueState()
     private lateinit var store: SessionStore
     private lateinit var automaticUpdates: AutomaticUpdatePreferences
+    private var automaticUpdateMessageSubscription: AutoCloseable? = null
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { refreshSettings() }
 
@@ -73,6 +74,10 @@ class MainActivity : ComponentActivity() {
 
         store = SessionStore(this)
         automaticUpdates = AutomaticUpdatePreferences(this)
+        automaticUpdateMessageSubscription =
+            automaticUpdates.observePendingMessage { message ->
+                runOnUiThread { state.automaticUpdateMessage = message }
+            }
         cleanStaleInstallSessions(this)
         state.context = this
         state.restore(store)
@@ -125,6 +130,12 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         AppVisibility.activityPaused()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        automaticUpdateMessageSubscription?.close()
+        automaticUpdateMessageSubscription = null
+        super.onDestroy()
     }
 
     private fun handleRedirect(intent: Intent?) {
