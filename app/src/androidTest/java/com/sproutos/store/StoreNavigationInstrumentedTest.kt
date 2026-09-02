@@ -1,7 +1,9 @@
 package com.sproutos.store
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -91,6 +93,42 @@ class StoreNavigationInstrumentedTest {
         store.clear()
     }
 
+    @Test
+    fun duplicatePersonalSiteUrlsDoNotCrashTheLibrary() {
+        val state = CatalogueState()
+        val store = SessionStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        store.clear()
+        state.acceptSession(
+            OAuthSession(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                expiresAtEpochSeconds = Long.MAX_VALUE,
+                scopes = setOf("project:read"),
+            ),
+            store,
+        )
+        state.accept(parseCatalogue(duplicateSitesCatalogueJson()))
+
+        compose.setContent {
+            SproutTheme {
+                SproutStoreApp(
+                    state = state,
+                    onSignIn = {},
+                    onSignOut = {},
+                    onRefresh = {},
+                    onInstall = {},
+                    onClientAutomaticUpdates = {},
+                    onAppAutomaticUpdates = {},
+                    onEnableUpdateNotifications = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag("sprout:nav:personal").performClick()
+        compose.onAllNodesWithText("Duplicate Site").assertCountEquals(1)
+        store.clear()
+    }
+
     private fun catalogueJson(): String =
         """
         {
@@ -112,6 +150,20 @@ class StoreNavigationInstrumentedTest {
             "category": "Personal tools"
           }]},
           "personal": {"apps": [], "sites": []}
+        }
+        """.trimIndent()
+
+    private fun duplicateSitesCatalogueJson(): String =
+        """
+        {
+          "version": 2,
+          "generatedAt": "2026-09-02T00:00:00Z",
+          "expiresAt": "2026-09-02T01:00:00Z",
+          "public": {"apps": []},
+          "personal": {"apps": [], "sites": [
+            {"name": "Duplicate Site", "url": "https://duplicate.sproutos.run", "summary": ""},
+            {"name": "Duplicate Site", "url": "https://duplicate.sproutos.run", "summary": ""}
+          ]}
         }
         """.trimIndent()
 }

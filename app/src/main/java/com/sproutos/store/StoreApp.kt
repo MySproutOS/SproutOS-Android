@@ -437,7 +437,10 @@ private fun PersonalScreen(
     onInstall: (ReleaseMetadata) -> Unit,
 ) {
     val apps = state.catalogue?.personal?.apps.orEmpty()
-    val sites = state.catalogue?.personal?.sites.orEmpty()
+    // A historical or malformed catalogue must not be able to crash Compose by supplying the
+    // same LazyColumn key twice. The API also returns only each project's live deployment, but the
+    // client keeps this boundary defensive for older servers and cached responses.
+    val sites = state.catalogue?.personal?.sites.orEmpty().distinctBy { it.url }
     val updates = apps.filter { state.actionFor(it) == InstallAction.Update }
     val installed =
         apps.filter {
