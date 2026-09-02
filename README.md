@@ -1,19 +1,20 @@
 # SproutOS for Android
 
-The client for SproutOS's own app catalogue. Not a "store" — SproutOS is the whole product, and the
-app is one way into it.
+The secure Android store and personal app library for SproutOS.
 
 Its canonical Android application ID is `com.sproutos.store`, registered in Play Console under the
 friendly name **SproutOS**. The same ID is its namespace and stable self-update package identity.
 
 ## What it is for
 
-Two tabs at the bottom:
+Three destinations keep discovery, ownership, and device policy separate:
 
-- **Public** — apps anyone can install, from the shared catalogue.
-- **Personal** — the customer's own things, in two sections: their **apps**, and their **websites**.
-  Searchable across both, because someone who built a site and an app on SproutOS thinks of them as
-  one project, not two catalogues.
+- **Store** — public Android apps, category browsing, search suggestions/results, and verified
+  release details before installation.
+- **Personal** — the signed-in customer's installed apps, available updates, organization apps,
+  and deployed sites.
+- **Settings** — account state, SproutOS self-updates, installed-app automatic updates, and any
+  Android notification action an update needs.
 
 An app starts in its owner's Personal catalogue. A platform-reviewed app can also be published to
 the Public catalogue without changing the owner's Personal copy.
@@ -95,8 +96,30 @@ gradle :app:assembleDebug       # an installable, unsigned APK
 gradle :app:connectedDebugAndroidTest # manifest/settings checks on a running emulator
 ```
 
-Debug builds use the emulator host bridge (`10.0.2.2`) for the website and API. Release builds use
-`https://sproutos.me` and `https://api.sproutos.me` and disable cleartext traffic.
+Debug builds use the emulator host bridge (`10.0.2.2`) for the website and API and install as
+`com.sproutos.store.debug`. They therefore coexist with the signed production package on one
+persistent acceptance emulator. Release builds use `https://sproutos.me` and
+`https://api.sproutos.me`, keep the canonical `com.sproutos.store` package, and disable cleartext
+traffic.
+
+### Persistent production acceptance emulator
+
+The local acceptance device is `Pixel_3a_API_34_extension_level_7_arm64-v8a` unless
+`SPROUTOS_ANDROID_AVD` names another AVD. Its data and snapshot are intentionally retained between
+runs so the signed production client, OAuth session, installed sample app, installer ownership,
+and update history can be tested as device state rather than reconstructed fixtures.
+
+```bash
+tools/emulator.sh start
+tools/emulator.sh status
+tools/emulator.sh install-production /absolute/path/to/signed-sproutos.apk
+tools/emulator.sh install-debug app/build/outputs/apk/debug/app-debug.apk
+```
+
+Do not uninstall the production package to make a debug build fit; the debug application ID exists
+to prevent that shortcut. `tools/fixture-catalogue.mjs` serves a populated catalogue on local port
+3001 for visual Store/search/detail testing. It never substitutes for the recorded production
+GitHub-to-emulator acceptance chain.
 
 The release build is deliberately **unsigned**. SproutOS signs every APK it distributes, including
 this one, on a machine that is not a CI runner — see `docs/apk-signing.md` in the platform
@@ -116,11 +139,8 @@ declared in the workflow, and proves that the APK is still unsigned. It records 
 byte size, and SHA-256 in `release-manifest.json` and `SHA256SUMS`, then publishes a GitHub
 build-provenance attestation for the APK.
 
-For every release, update the workflow's `EXPECTED_VERSION_CODE` and `EXPECTED_VERSION_NAME` in the
-same reviewed change as `app/build.gradle.kts`. The two values intentionally live at separate
-boundaries: a forgotten or unintended Android version change must stop the handoff job instead of
-silently becoming eligible for production signing. Create and push the tag only after the merged
-`main` verification succeeds:
+The workflow derives the version from the built APK and requires the tag to be exactly
+`v<versionName>`. Create and push the tag only after the merged `main` verification succeeds:
 
 ```bash
 repository=MySproutOS/SproutOS-Android
@@ -238,9 +258,12 @@ what it refuses. The platform's own tests cover what it emits. Both sides need o
 on either is a tab that shows nothing and explains nothing.
 
 The unit suite covers the update-only decision and each documented Android target-SDK threshold in
-addition to the catalogue and download contracts. The instrumentation suite verifies that the two
-settings persist independently and that the updater permissions and private result receiver are in
-the packaged manifest.
+addition to the catalogue and download contracts. The instrumentation suite verifies that Store
+search reaches a dedicated detail screen, Personal remains a signed-in boundary, Settings owns both
+independent update controls, those controls persist, and the updater permissions and private result
+receiver are in the packaged manifest. Mobile MCP remains the visible-screen acceptance tool for
+the persistent emulator; shell-only installation is diagnostic evidence, not the production user
+journey.
 
 ## Platform contract
 

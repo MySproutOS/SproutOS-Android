@@ -83,8 +83,8 @@ class MainActivity : ComponentActivity() {
         state.restore(store)
 
         setContent {
-            MaterialTheme {
-                CatalogueScreen(
+            SproutTheme {
+                SproutStoreApp(
                     state = state,
                     onSignIn = ::signIn,
                     onSignOut = ::signOut,

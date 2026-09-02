@@ -69,6 +69,7 @@ data class App(
     override val certificateSha256: String,
     override val downloadUrl: String,
     val iconUrl: String? = null,
+    val category: String? = null,
 ) : ReleaseMetadata
 
 @Serializable
