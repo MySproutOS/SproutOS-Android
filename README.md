@@ -4,8 +4,7 @@ The client for SproutOS's own app catalogue. Not a "store" — SproutOS is the w
 app is one way into it.
 
 Its canonical Android application ID is `com.sproutos.store`, registered in Play Console under the
-friendly name **SproutOS**. The same ID is the namespace, self-update package identity, and prefix
-for the private download provider authority.
+friendly name **SproutOS**. The same ID is its namespace and stable self-update package identity.
 
 ## What it is for
 
