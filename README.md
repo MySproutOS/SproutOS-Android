@@ -104,46 +104,94 @@ repository. A signing config here would be a second key, in a place the first on
 
 ## Handing a release to the on-prem signer
 
-Never submit a locally selected APK or a pull-request build to the production signer. After a
-release change is reviewed and merged, the successful **Android client** workflow on the resulting
-`main` commit creates one immutable artifact named
-`sproutos-android-unsigned-<40-character-commit>`. The release-handoff job independently checks the
-expected package and version declared in the workflow, proves that the APK is still unsigned,
-records its byte size and SHA-256 in `release-manifest.json` and `SHA256SUMS`, and publishes a GitHub
+Never submit a locally selected APK or a pull-request build to the production signer. Pull requests
+and ordinary `main` pushes run verification only. After a release change is reviewed and merged, an
+operator creates the canonical release tag `v<versionName>` on that reviewed `main` commit (for
+example, `v0.2.0`). Only that tag can run `release-handoff` and create the immutable artifact
+`sproutos-android-unsigned-<tag>-<40-character-commit>`.
+
+The release-handoff job requires the tag's commit to be reachable from `main`, checks that the tag's
+version exactly equals the APK's Gradle `versionName`, checks the expected package and version
+declared in the workflow, and proves that the APK is still unsigned. It records the tag, commit,
+byte size, and SHA-256 in `release-manifest.json` and `SHA256SUMS`, then publishes a GitHub
 build-provenance attestation for the APK.
 
 For every release, update the workflow's `EXPECTED_VERSION_CODE` and `EXPECTED_VERSION_NAME` in the
 same reviewed change as `app/build.gradle.kts`. The two values intentionally live at separate
 boundaries: a forgotten or unintended Android version change must stop the handoff job instead of
-silently becoming eligible for production signing.
-
-Choose the exact merged commit and its successful push workflow run, then download that run's
-artifact rather than whichever run happens to be newest:
+silently becoming eligible for production signing. Create and push the tag only after the merged
+`main` verification succeeds:
 
 ```bash
 repository=MySproutOS/SproutOS-Android
-revision=REPLACE_WITH_REVIEWED_40_CHARACTER_MAIN_COMMIT
-run_id=$(gh run list --repo "$repository" --workflow ci.yml --commit "$revision" \
-  --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-test -n "$run_id"
+version=0.2.0
+tag="v$version"
+git fetch origin main --tags
+revision=$(git rev-parse origin/main)
+test "$(git show "$revision:app/build.gradle.kts" | sed -n 's/.*versionName = "\([^"]*\)".*/\1/p')" = "$version"
+main_runs=$(gh run list --repo "$repository" --workflow ci.yml --commit "$revision" \
+  --branch main --event push --status success --limit 20 \
+  --json databaseId,headBranch,headSha,event,conclusion)
+jq -e --arg revision "$revision" '
+  [.[] | select(
+    .event == "push" and
+    .conclusion == "success" and
+    .headBranch == "main" and
+    .headSha == $revision
+  )] | length >= 1
+' <<<"$main_runs" >/dev/null
+test -z "$(git ls-remote --tags origin "refs/tags/$tag")"
+git tag -a "$tag" "$revision" -m "SproutOS Android $version"
+git push origin "refs/tags/$tag"
+```
+
+Treat release tags as immutable. If a release is wrong, increment the Android version and create a
+new tag; do not move or reuse an existing tag.
+
+On the on-prem signer, resolve the exact tag and select its successful tag-push workflow run. Do not
+select the ordinary `main` run for the same commit:
+
+```bash
+repository=MySproutOS/SproutOS-Android
+tag=v0.2.0
+expected_version=${tag#v}
+revision=$(gh api "repos/$repository/commits/$tag" --jq .sha)
+runs_json=$(gh run list --repo "$repository" --workflow ci.yml --commit "$revision" \
+  --event push --status success --limit 20 \
+  --json databaseId,headBranch,headSha,event,conclusion)
+run_id=$(jq -er --arg tag "$tag" --arg revision "$revision" '
+  [.[] | select(
+    .event == "push" and
+    .conclusion == "success" and
+    .headBranch == $tag and
+    .headSha == $revision
+  )] | if length == 1 then .[0].databaseId else error("expected exactly one successful tag run") end
+' <<<"$runs_json")
 run_json=$(gh run view "$run_id" --repo "$repository" \
   --json conclusion,event,headBranch,headSha)
-jq -e --arg revision "$revision" '
+jq -e --arg tag "$tag" --arg revision "$revision" '
   .conclusion == "success" and
   .event == "push" and
-  .headBranch == "main" and
+  .headBranch == $tag and
   .headSha == $revision
 ' <<<"$run_json"
 
 handoff=$(mktemp -d /private/tmp/sproutos-android-handoff.XXXXXX)
 gh run download "$run_id" --repo "$repository" \
-  --name "sproutos-android-unsigned-$revision" --dir "$handoff"
+  --name "sproutos-android-unsigned-$tag-$revision" --dir "$handoff"
 (cd "$handoff" && shasum -a 256 -c SHA256SUMS)
-jq -e --arg repository "$repository" --arg revision "$revision" '
+jq -e \
+  --arg repository "$repository" \
+  --arg revision "$revision" \
+  --arg tag "$tag" \
+  --arg expected_version "$expected_version" '
   .schemaVersion == 1 and
   .sourceRepository == $repository and
   .sourceCommit == $revision and
+  .sourceTag == $tag and
+  .sourceRef == ("refs/tags/" + $tag) and
   .packageName == "com.sproutos.store" and
+  .versionName == $expected_version and
   .signed == false and
   (.artifact | type == "string") and
   (.sha256 | test("^[0-9a-f]{64}$")) and
@@ -154,8 +202,9 @@ jq -e --arg repository "$repository" --arg revision "$revision" '
 apk=$(jq -r .artifact "$handoff/release-manifest.json")
 gh attestation verify "$handoff/$apk" \
   --repo "$repository" \
-  --signer-workflow "$repository/.github/workflows/ci.yml" \
-  --source-ref refs/heads/main \
+  --cert-identity "https://github.com/$repository/.github/workflows/ci.yml@refs/tags/$tag" \
+  --signer-digest "$revision" \
+  --source-ref "refs/tags/$tag" \
   --source-digest "$revision" \
   --deny-self-hosted-runners
 ```
@@ -165,6 +214,9 @@ reviewed release before running the platform's `queue-client-release` command. T
 is an unsigned custody handoff, not a customer download and not a GitHub Release. The only public
 client APK is the version the on-prem signer verifies, signs with the existing `com.sproutos.store`
 identity, and publishes through SproutOS's versioned artifact store.
+
+The production signing key and its passwords stay on the on-prem signer. They must never be uploaded
+to GitHub, stored in Actions secrets, or added to this repository.
 
 ## Sign-in
 
