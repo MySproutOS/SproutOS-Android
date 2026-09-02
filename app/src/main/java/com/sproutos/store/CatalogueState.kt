@@ -9,7 +9,6 @@ import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.core.content.FileProvider
 import java.io.File
 
 /**
@@ -32,6 +31,13 @@ class CatalogueState {
 
     var installState: Map<String, InstallState> by mutableStateOf(emptyMap())
         private set
+
+    var automaticUpdateSettings: AutomaticUpdateSettings by
+        mutableStateOf(AutomaticUpdateSettings(client = true, installedApps = true))
+
+    var automaticUpdateMessage: String? by mutableStateOf(null)
+
+    var updateNotificationsNeedPermission: Boolean by mutableStateOf(false)
 
     fun beginRefresh() {
         loading = true
@@ -247,24 +253,23 @@ class CatalogueState {
             return
         }
 
-        /*
-          A content URI, never a `file://` one.
-
-          Android has rejected `file://` in an intent since 7.0 with a FileUriExposedException —
-          the exception is thrown in *this* app, so a mistake here crashes the client rather than
-          failing the install.
-        */
-        val uri: Uri =
-            FileProvider.getUriForFile(target, "${target.packageName}.downloads", file)
-
-        target.startActivity(
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            },
-        )
-        setInstallState(app, InstallState.AwaitingInstaller)
+        when (
+            val committed =
+                commitPackageSession(
+                    target,
+                    SessionInstallRequest(
+                        release = app,
+                        file = file,
+                        automatic = false,
+                        userInitiated = true,
+                    ),
+                )
+        ) {
+            is SessionInstallResult.Committed ->
+                setInstallState(app, InstallState.AwaitingInstaller)
+            is SessionInstallResult.Failed ->
+                setInstallState(app, InstallState.Failed(committed.reason))
+        }
     }
 
     fun actionFor(app: ReleaseMetadata): InstallAction {
@@ -280,6 +285,14 @@ class CatalogueState {
     fun setInstallState(app: ReleaseMetadata, value: InstallState) {
         val apply = { installState = installState + (app.packageName to value) }
         if (Looper.myLooper() == Looper.getMainLooper()) apply() else mainHandler.post(apply)
+    }
+
+    /** The installer activity has returned; the next action is recalculated from PackageManager. */
+    fun clearInstallerWaits() {
+        installState =
+            installState.mapValues { (_, value) ->
+                if (value is InstallState.AwaitingInstaller) InstallState.Idle else value
+            }
     }
 
     fun open(site: Site) {

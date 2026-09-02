@@ -1,7 +1,11 @@
 package com.sproutos.store
 
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -57,11 +62,16 @@ enum class Tab(val label: String, val description: String, val entryLabel: Strin
 class MainActivity : ComponentActivity() {
     private val state = CatalogueState()
     private lateinit var store: SessionStore
+    private lateinit var automaticUpdates: AutomaticUpdatePreferences
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { refreshSettings() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         store = SessionStore(this)
+        automaticUpdates = AutomaticUpdatePreferences(this)
+        cleanStaleInstallSessions(this)
         state.context = this
         state.restore(store)
 
@@ -73,6 +83,9 @@ class MainActivity : ComponentActivity() {
                     onSignOut = ::signOut,
                     onRefresh = ::refresh,
                     onInstall = ::install,
+                    onClientAutomaticUpdates = ::setClientAutomaticUpdates,
+                    onAppAutomaticUpdates = ::setAppAutomaticUpdates,
+                    onEnableUpdateNotifications = ::requestUpdateNotifications,
                 )
             }
         }
@@ -82,6 +95,7 @@ class MainActivity : ComponentActivity() {
         // nothing.
         handleRedirect(intent)
         if (intent?.data?.scheme != "sproutos") refresh()
+        refreshSettings()
     }
 
     /**
@@ -95,6 +109,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleRedirect(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::automaticUpdates.isInitialized) {
+            state.clearInstallerWaits()
+            refreshSettings()
+        }
     }
 
     private fun handleRedirect(intent: Intent?) {
@@ -149,6 +171,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun setClientAutomaticUpdates(enabled: Boolean) {
+        automaticUpdates.setClient(enabled)
+        afterAutomaticUpdateSettingChanged(enabled)
+    }
+
+    private fun setAppAutomaticUpdates(enabled: Boolean) {
+        automaticUpdates.setInstalledApps(enabled)
+        afterAutomaticUpdateSettingChanged(enabled)
+    }
+
+    private fun afterAutomaticUpdateSettingChanged(enabled: Boolean) {
+        refreshSettings()
+        if (
+            enabled &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun refreshSettings() {
+        val settings = automaticUpdates.read()
+        state.automaticUpdateSettings = settings
+        state.automaticUpdateMessage = automaticUpdates.pendingMessage()
+        state.updateNotificationsNeedPermission =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED &&
+                (settings.client || settings.installedApps)
+        AutomaticUpdateScheduler.reconcile(this, settings)
+    }
+
+    private fun requestUpdateNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     private fun apiBase(): String =
         getString(R.string.api_base)
 
@@ -162,7 +224,7 @@ class MainActivity : ComponentActivity() {
           id is a client nothing has granted, and every signed-in customer would be asked to
           authorise again.
         */
-        const val CLIENT_ID = "01a03b00-0000-7000-8000-0000000a4d01"
+        const val CLIENT_ID = OAUTH_CLIENT_ID
     }
 }
 
@@ -173,6 +235,9 @@ fun CatalogueScreen(
     onSignOut: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onInstall: (ReleaseMetadata) -> Unit = {},
+    onClientAutomaticUpdates: (Boolean) -> Unit = {},
+    onAppAutomaticUpdates: (Boolean) -> Unit = {},
+    onEnableUpdateNotifications: () -> Unit = {},
 ) {
     var tab by remember { mutableStateOf(Tab.Public) }
     var query by remember { mutableStateOf("") }
@@ -201,6 +266,47 @@ fun CatalogueScreen(
             }
             if (state.loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+            }
+            Text(
+                "Automatic updates",
+                modifier = Modifier.padding(top = 16.dp).semantics { heading() },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            AutomaticUpdateToggle(
+                label = "Update SproutOS automatically",
+                checked = state.automaticUpdateSettings.client,
+                onCheckedChange = onClientAutomaticUpdates,
+            )
+            AutomaticUpdateToggle(
+                label = "Update installed apps automatically",
+                checked = state.automaticUpdateSettings.installedApps,
+                onCheckedChange = onAppAutomaticUpdates,
+            )
+            Text(
+                "Checks daily on unmetered Wi-Fi when battery and storage are not low. " +
+                    "Android may still ask you to confirm an update.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.updateNotificationsNeedPermission) {
+                Text(
+                    "Allow notifications so Android can show confirmations when an update " +
+                        "cannot finish automatically.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Button(onClick = onEnableUpdateNotifications) {
+                    Text("Allow update notifications")
+                }
+            }
+            state.automaticUpdateMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(top = 8.dp).semantics {
+                        liveRegion = LiveRegionMode.Polite
+                    },
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             state.catalogue?.clientUpdate?.let { release ->
                 if (state.actionFor(release) == InstallAction.Update) {
@@ -306,6 +412,20 @@ fun CatalogueScreen(
         }
     }
 }
+
+@Composable
+private fun AutomaticUpdateToggle(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(label, modifier = Modifier.weight(1f).padding(vertical = 12.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+const val OAUTH_CLIENT_ID = "01a03b00-0000-7000-8000-0000000a4d01"
 
 @Composable
 private fun EntryRow(

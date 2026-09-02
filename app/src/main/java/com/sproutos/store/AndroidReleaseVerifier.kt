@@ -58,6 +58,9 @@ fun verifyDownloadedApk(context: Context, app: ReleaseMetadata, file: File): Rel
     return verifyReleaseIdentity(app, identity)
 }
 
+fun downloadedTargetSdk(context: Context, file: File): Int? =
+    context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)?.applicationInfo?.targetSdkVersion
+
 fun installedRelease(context: Context, app: ReleaseMetadata): ReleaseIdentity? =
     try {
         context.packageManager.getPackageInfo(app.packageName, flags()).releaseIdentity()

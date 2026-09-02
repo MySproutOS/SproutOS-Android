@@ -16,8 +16,8 @@ Two tabs at the bottom:
   Searchable across both, because someone who built a site and an app on SproutOS thinks of them as
   one project, not two catalogues.
 
-Private by default. An app a customer builds is theirs and appears to nobody else unless they
-publish it.
+An app starts in its owner's Personal catalogue. A platform-reviewed app can also be published to
+the Public catalogue without changing the owner's Personal copy.
 
 ## SproutOS signs every app with its own key
 
@@ -30,8 +30,9 @@ It also means SproutOS is accountable for what is distributed under its name, so
 before publication and can be removed. That is not a formality: Google's current [Android developer
 verification timeline](https://developer.android.com/developer-verification) starts regional
 enforcement for participating stores in Brazil, Indonesia, Singapore, and Thailand on September 30,
-2026, then expands globally to all apps on certified devices in 2027. SproutOS registers its
-directly distributed package names through Android Developer Console.
+2026, then expands globally to all apps on certified devices in 2027. SproutOS manages directly
+distributed package names through Play Console and checks their status with the Android Developer
+ID Status API.
 
 ## Why this client is distributed directly
 
@@ -46,12 +47,43 @@ F-Droid model, and the reason the website needs a download page.
 Installing an app therefore needs `REQUEST_INSTALL_PACKAGES` and the user allowing installs from
 this source. That is a real friction point and worth designing for rather than apologising about.
 
+## Automatic updates
+
+The two automatic-update switches are independent and can be changed at any time:
+
+- **Update SproutOS automatically** checks the catalogue's `clientUpdate`.
+- **Update installed apps automatically** checks public apps and the signed-in customer's personal
+  apps, but never installs a catalogue app that is not already on the device.
+
+The client schedules one unique WorkManager job approximately daily. It only runs on an unmetered
+network while battery and storage are not low. Every candidate still passes the same package name,
+version, signing-certificate, byte count, and SHA-256 checks as a foreground update. A missing app,
+same or lower version, or different signer is refused.
+
+Android 12 and later can sometimes update without showing a confirmation screen. SproutOS requests
+that only for its own update, or an app for which Android records SproutOS as the installer or update
+owner, and only when the APK meets that Android release's target-SDK floor. Android owns the final
+decision and may still require confirmation. In that case SproutOS posts an actionable notification;
+if notifications are unavailable, it abandons the waiting session and explains on the next app open
+that the update must be retried manually. It never describes this feature as universally silent.
+
+Foreground installs now use PackageInstaller sessions too. This lets a newly installed app record
+SproutOS as its installer and, on Android 14+, request update ownership. An app originally installed
+by the older client or another source may therefore require one confirmed update before later
+updates become eligible for confirmation-free installation.
+
+The platform behavior is documented by Android's
+[`SessionParams.setRequireUserAction`](https://developer.android.com/reference/android/content/pm/PackageInstaller.SessionParams#setRequireUserAction(int)),
+[`SessionParams.setRequestUpdateOwnership`](https://developer.android.com/reference/android/content/pm/PackageInstaller.SessionParams#setRequestUpdateOwnership(boolean)),
+[`UPDATE_PACKAGES_WITHOUT_USER_ACTION`](https://developer.android.com/reference/android/Manifest.permission#UPDATE_PACKAGES_WITHOUT_USER_ACTION),
+and [periodic WorkManager](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work)
+documentation.
+
 ## Status
 
 The client implements the catalogue v2 contract, native PKCE sign-in, authenticated personal
-catalogue refresh, verified APK install/update, unknown-source permission guidance, and self-update
-when the platform publishes `clientUpdate`. A live signed-release-to-emulator acceptance run still
-depends on the platform signer, Android registration, and DB-backed client release being deployed.
+catalogue refresh, verified PackageInstaller install/update sessions, unknown-source permission
+guidance, scheduled app updates, and self-update when the platform publishes `clientUpdate`.
 
 ## Building
 
@@ -61,6 +93,7 @@ Needs a JDK 21 and the Android SDK (platform 35, build-tools 35).
 echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 gradle :app:testDebugUnitTest   # the catalogue contract, from this side
 gradle :app:assembleDebug       # an installable, unsigned APK
+gradle :app:connectedDebugAndroidTest # manifest/settings checks on a running emulator
 ```
 
 Debug builds use the emulator host bridge (`10.0.2.2`) for the website and API. Release builds use
@@ -89,8 +122,10 @@ here proves nothing.
 what it refuses. The platform's own tests cover what it emits. Both sides need one, because a rename
 on either is a tab that shows nothing and explains nothing.
 
-The Compose screens have no tests. They are a list, a search field and two buttons over logic that
-is tested separately, and an instrumented test would need an emulator for less than it costs.
+The unit suite covers the update-only decision and each documented Android target-SDK threshold in
+addition to the catalogue and download contracts. The instrumentation suite verifies that the two
+settings persist independently and that the updater permissions and private result receiver are in
+the packaged manifest.
 
 ## Platform contract
 
