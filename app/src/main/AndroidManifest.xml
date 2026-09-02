@@ -8,6 +8,16 @@
       not grant it.
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!--
+      Android 12+ can honor a PackageInstaller request to update without a confirmation screen,
+      but only for self-updates or installer-of-record/update-owner updates which also meet the
+      platform's moving target-SDK floor. This normal permission merely lets Android evaluate the
+      request; it does not bypass any of those checks.
+    -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP" />
+    <!-- Confirmation fallback notifications are opt-in at runtime on Android 13+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
       Android 11 filters package-manager lookups unless the caller declares what it needs to see.
@@ -58,19 +68,9 @@
             </intent-filter>
         </activity>
 
-        <!--
-          Downloaded APKs live in this app's own cache and are handed to the installer through a
-          content URI. A `file://` URI has been rejected since Android 7 with a
-          FileUriExposedException, and the provider is what makes the handover legal.
-        -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.downloads"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
+
     </application>
 </manifest>
