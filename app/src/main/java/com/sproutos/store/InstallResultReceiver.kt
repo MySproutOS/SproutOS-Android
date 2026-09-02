@@ -13,6 +13,20 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal object AppVisibility {
+    private val resumed = AtomicBoolean(false)
+
+    fun activityResumed() = resumed.set(true)
+
+    fun activityPaused() = resumed.set(false)
+
+    fun isActivityResumed(): Boolean = resumed.get()
+}
+
+internal fun shouldStartConfirmationDirectly(userInitiated: Boolean, activityResumed: Boolean) =
+    userInitiated && activityResumed
 
 /** Receives the final or confirmation-required result for a committed install session. */
 class InstallResultReceiver : BroadcastReceiver() {
@@ -41,9 +55,10 @@ class InstallResultReceiver : BroadcastReceiver() {
                     return
                 }
 
-                // A foreground button tap should continue directly. Background work must not
-                // depend on activity-start exemptions, so it always uses an explicit notification.
-                if (userInitiated) {
+                // A button tap may finish after the user has left SproutOS. Start Android's
+                // confirmation directly only while our activity is actually resumed; otherwise
+                // background-start limits and user context both require a notification.
+                if (shouldStartConfirmationDirectly(userInitiated, AppVisibility.isActivityResumed())) {
                     val started =
                         runCatching {
                             context.startActivity(confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

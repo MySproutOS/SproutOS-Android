@@ -115,10 +115,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        AppVisibility.activityResumed()
         if (::automaticUpdates.isInitialized) {
             state.clearInstallerWaits()
             refreshSettings()
         }
+    }
+
+    override fun onPause() {
+        AppVisibility.activityPaused()
+        super.onPause()
     }
 
     private fun handleRedirect(intent: Intent?) {
@@ -285,7 +291,7 @@ fun CatalogueScreen(
                 onCheckedChange = onAppAutomaticUpdates,
             )
             Text(
-                "Checks daily on unmetered Wi-Fi when battery and storage are not low. " +
+                "Checks daily on an unmetered network when battery and storage are not low. " +
                     "Android may still ask you to confirm an update.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
