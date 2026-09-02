@@ -85,7 +85,7 @@ class CatalogueState {
     /** Set by the activity. Null in tests and previews, where no Android action is exercised. */
     var context: Context? = null
 
-    var session: Session = Session(null)
+    var session: Session by mutableStateOf(Session(null))
         private set
 
     val signedIn: Boolean get() = session.oauth != null
