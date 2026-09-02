@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -31,10 +32,10 @@ jobs:
             exit 1
           fi
 
-  # A main-branch run is the only source an operator may submit to the on-prem signer. Pull-request
-  # artifacts are deliberately ineligible: their source is not the reviewed, merged commit.
+  # Only an explicit v<versionName> tag creates a signer handoff. Pull-request and ordinary
+  # main-branch pushes verify the client but cannot create a production-signing input.
   release-handoff:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -50,6 +51,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
@@ -64,6 +66,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF_TYPE" = "tag"
+          tag_name=$GITHUB_REF_NAME
+          case "$tag_name" in
+            v*) ;;
+            *) echo "release tag must be v<versionName>" >&2; exit 1 ;;
+          esac
+          tag_version=${tag_name#v}
+          test -n "$tag_version"
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main
 
           source_apk=app/build/outputs/apk/release/app-release-unsigned.apk
           test -f "$source_apk"
@@ -79,6 +90,8 @@ jobs:
           test "$package_name" = "$EXPECTED_PACKAGE_NAME"
           test "$version_code" = "$EXPECTED_VERSION_CODE"
           test "$version_name" = "$EXPECTED_VERSION_NAME"
+          test "$tag_version" = "$version_name"
+          test "$tag_name" = "v${version_name}"
 
           artifact="sproutos-store-${version_name}-v${version_code}-unsigned.apk"
           mkdir dist
@@ -88,16 +101,19 @@ jobs:
           size_bytes=$(stat -c '%s' "dist/$artifact")
           python3 - \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$artifact" "$digest" "$size_bytes" \
-            "$package_name" "$version_name" "$version_code" > dist/release-manifest.json <<'PY'
+            "$package_name" "$version_name" "$version_code" "$tag_name" "$GITHUB_REF" \
+            > dist/release-manifest.json <<'PY'
           import json
           import sys
 
-          repository, commit, artifact, digest, size, package, version_name, version_code = sys.argv[1:]
+          repository, commit, artifact, digest, size, package, version_name, version_code, tag, ref = sys.argv[1:]
           json.dump(
               {
                   "schemaVersion": 1,
                   "sourceRepository": repository,
                   "sourceCommit": commit,
+                  "sourceTag": tag,
+                  "sourceRef": ref,
                   "artifact": artifact,
                   "sha256": digest,
                   "sizeBytes": int(size),
@@ -112,6 +128,22 @@ jobs:
           )
           sys.stdout.write("\n")
           PY
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$GITHUB_SHA" \
+            --arg tag "$tag_name" \
+            --arg package "$EXPECTED_PACKAGE_NAME" \
+            --arg version_name "$EXPECTED_VERSION_NAME" \
+            --argjson version_code "$EXPECTED_VERSION_CODE" '
+              .sourceRepository == $repository and
+              .sourceCommit == $commit and
+              .sourceTag == $tag and
+              .sourceRef == ("refs/tags/" + $tag) and
+              .packageName == $package and
+              .versionName == $version_name and
+              .versionCode == $version_code and
+              .signed == false
+            ' dist/release-manifest.json
       - name: Attest the unsigned APK build provenance
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
@@ -120,7 +152,7 @@ jobs:
         id: upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: sproutos-android-unsigned-${{ github.sha }}
+          name: sproutos-android-unsigned-${{ github.ref_name }}-${{ github.sha }}
           path: dist/
           if-no-files-found: error
           compression-level: 0
