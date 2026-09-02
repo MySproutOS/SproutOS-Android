@@ -102,6 +102,70 @@ The release build is deliberately **unsigned**. SproutOS signs every APK it dist
 this one, on a machine that is not a CI runner — see `docs/apk-signing.md` in the platform
 repository. A signing config here would be a second key, in a place the first one is not.
 
+## Handing a release to the on-prem signer
+
+Never submit a locally selected APK or a pull-request build to the production signer. After a
+release change is reviewed and merged, the successful **Android client** workflow on the resulting
+`main` commit creates one immutable artifact named
+`sproutos-android-unsigned-<40-character-commit>`. The release-handoff job independently checks the
+expected package and version declared in the workflow, proves that the APK is still unsigned,
+records its byte size and SHA-256 in `release-manifest.json` and `SHA256SUMS`, and publishes a GitHub
+build-provenance attestation for the APK.
+
+For every release, update the workflow's `EXPECTED_VERSION_CODE` and `EXPECTED_VERSION_NAME` in the
+same reviewed change as `app/build.gradle.kts`. The two values intentionally live at separate
+boundaries: a forgotten or unintended Android version change must stop the handoff job instead of
+silently becoming eligible for production signing.
+
+Choose the exact merged commit and its successful push workflow run, then download that run's
+artifact rather than whichever run happens to be newest:
+
+```bash
+repository=MySproutOS/SproutOS-Android
+revision=REPLACE_WITH_REVIEWED_40_CHARACTER_MAIN_COMMIT
+run_id=$(gh run list --repo "$repository" --workflow ci.yml --commit "$revision" \
+  --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+test -n "$run_id"
+run_json=$(gh run view "$run_id" --repo "$repository" \
+  --json conclusion,event,headBranch,headSha)
+jq -e --arg revision "$revision" '
+  .conclusion == "success" and
+  .event == "push" and
+  .headBranch == "main" and
+  .headSha == $revision
+' <<<"$run_json"
+
+handoff=$(mktemp -d /private/tmp/sproutos-android-handoff.XXXXXX)
+gh run download "$run_id" --repo "$repository" \
+  --name "sproutos-android-unsigned-$revision" --dir "$handoff"
+(cd "$handoff" && shasum -a 256 -c SHA256SUMS)
+jq -e --arg repository "$repository" --arg revision "$revision" '
+  .schemaVersion == 1 and
+  .sourceRepository == $repository and
+  .sourceCommit == $revision and
+  .packageName == "com.sproutos.store" and
+  .signed == false and
+  (.artifact | type == "string") and
+  (.sha256 | test("^[0-9a-f]{64}$")) and
+  (.sizeBytes | type == "number" and . > 0) and
+  (.versionCode | type == "number" and . > 0) and
+  (.versionName | type == "string" and length > 0)
+' "$handoff/release-manifest.json"
+apk=$(jq -r .artifact "$handoff/release-manifest.json")
+gh attestation verify "$handoff/$apk" \
+  --repo "$repository" \
+  --signer-workflow "$repository/.github/workflows/ci.yml" \
+  --source-ref refs/heads/main \
+  --source-digest "$revision" \
+  --deny-self-hosted-runners
+```
+
+The operator must compare `versionCode`, `versionName`, SHA-256, size, and source commit with the
+reviewed release before running the platform's `queue-client-release` command. The GitHub artifact
+is an unsigned custody handoff, not a customer download and not a GitHub Release. The only public
+client APK is the version the on-prem signer verifies, signs with the existing `com.sproutos.store`
+identity, and publishes through SproutOS's versioned artifact store.
+
 ## Sign-in
 
 The system browser through Custom Tabs, never a WebView: a WebView in this app could read the
