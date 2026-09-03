@@ -2,6 +2,7 @@ package com.sproutos.store
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -93,5 +94,18 @@ class AutomaticUpdateSettingsInstrumentedTest {
                 0,
             )
         assertFalse(receiver.exported)
+
+        val packageReplacedReceiver =
+            context.packageManager.getReceiverInfo(
+                ComponentName(context, PackageReplacedReceiver::class.java),
+                PackageManager.GET_META_DATA,
+            )
+        assertFalse(packageReplacedReceiver.exported)
+        assertTrue(
+            context.packageManager.queryBroadcastReceivers(
+                Intent(Intent.ACTION_MY_PACKAGE_REPLACED).setPackage(context.packageName),
+                PackageManager.MATCH_ALL,
+            ).any { it.activityInfo.name == PackageReplacedReceiver::class.java.name },
+        )
     }
 }
