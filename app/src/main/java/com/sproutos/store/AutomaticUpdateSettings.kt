@@ -1,6 +1,8 @@
 package com.sproutos.store
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -138,5 +140,13 @@ object AutomaticUpdateScheduler {
             ExistingPeriodicWorkPolicy.UPDATE,
             work,
         )
+    }
+}
+
+/** Apply changed cadence immediately after Android replaces this package, without an app launch. */
+class PackageReplacedReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        AutomaticUpdateScheduler.reconcile(context, AutomaticUpdatePreferences(context).read())
     }
 }
