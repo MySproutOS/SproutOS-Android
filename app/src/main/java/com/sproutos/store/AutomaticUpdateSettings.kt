@@ -110,9 +110,10 @@ fun cleanStaleInstallSessions(context: Context) {
 
 object AutomaticUpdateScheduler {
     internal const val UNIQUE_WORK_NAME = "sproutos-automatic-updates"
+    internal const val REPEAT_INTERVAL_HOURS = 1L
 
     /**
-     * A unique daily job avoids duplicate schedules across launches. WorkManager is deliberately
+     * A unique hourly job avoids duplicate schedules across launches. WorkManager is deliberately
      * inexact; update discovery has no user-visible deadline and should cooperate with Doze.
      */
     fun reconcile(context: Context, settings: AutomaticUpdateSettings) {
@@ -129,7 +130,7 @@ object AutomaticUpdateScheduler {
                 .setRequiresStorageNotLow(true)
                 .build()
         val work =
-            PeriodicWorkRequestBuilder<AutomaticUpdateWorker>(24, TimeUnit.HOURS)
+            PeriodicWorkRequestBuilder<AutomaticUpdateWorker>(REPEAT_INTERVAL_HOURS, TimeUnit.HOURS)
                 .setConstraints(constraints)
                 .build()
         manager.enqueueUniquePeriodicWork(

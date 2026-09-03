@@ -568,7 +568,7 @@ private fun SettingsScreen(
         }
         item {
             Text(
-                "Checks daily on an unmetered network when battery and storage are not low. Android may still ask you to confirm an update.",
+                "Checks hourly on an unmetered network when battery and storage are not low. Android may still ask you to confirm an update.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
