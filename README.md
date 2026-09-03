@@ -55,7 +55,7 @@ The two automatic-update switches are independent and can be changed at any time
 - **Update installed apps automatically** checks public apps and the signed-in customer's personal
   apps, but never installs a catalogue app that is not already on the device.
 
-The client schedules one unique WorkManager job approximately daily. It only runs on an unmetered
+The client schedules one unique WorkManager job approximately hourly. It only runs on an unmetered
 network while battery and storage are not low. Every candidate still passes the same package name,
 version, signing-certificate, byte count, and SHA-256 checks as a foreground update. A missing app,
 same or lower version, or different signer is refused.

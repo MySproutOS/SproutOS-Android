@@ -16,6 +16,11 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 class AutomaticUpdateSettingsInstrumentedTest {
     @Test
+    fun automaticUpdatesUseTheDocumentedHourlyCadence() {
+        assertEquals(1L, AutomaticUpdateScheduler.REPEAT_INTERVAL_HOURS)
+    }
+
+    @Test
     fun settingsArePersistedAndIndependentlyControllable() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         context.getSharedPreferences("sproutos.automatic-updates", 0).edit().clear().commit()
