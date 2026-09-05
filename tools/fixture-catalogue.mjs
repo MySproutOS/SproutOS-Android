@@ -3,21 +3,40 @@
 import http from "node:http"
 
 const port = Number(process.env.PORT ?? 3001)
+
+/** @param {string} character */
 const digest = (character) => character.repeat(64)
-const app = ({ id, project, label, summary, version, code, size, category }) => ({
-  androidAppId: id,
-  projectId: project,
-  packageName: `me.sproutos.app.p${project.replaceAll("-", "")}`,
-  label,
-  summary,
-  versionName: version,
-  versionCode: code,
-  sha256: digest(id[0]),
-  sizeBytes: size,
-  certificateSha256: digest(project[0]),
-  downloadUrl: `https://fixtures.invalid/${id}.apk`,
-  category,
-})
+
+/**
+ * @typedef {object} FixtureAppInput
+ * @property {string} id Fixture app identifier.
+ * @property {string} project Fixture project identifier.
+ * @property {string} label Display label.
+ * @property {string} summary Display summary.
+ * @property {string} version Semantic version name.
+ * @property {number} code Android version code.
+ * @property {number} size APK size in bytes.
+ * @property {string} category Catalogue category.
+ */
+
+/** @param {FixtureAppInput} input */
+const app = (input) => {
+  const { id, project, label, summary, version, code, size, category } = input
+  return {
+    androidAppId: id,
+    projectId: project,
+    packageName: `me.sproutos.app.p${project.replaceAll("-", "")}`,
+    label,
+    summary,
+    versionName: version,
+    versionCode: code,
+    sha256: digest(id[0]),
+    sizeBytes: size,
+    certificateSha256: digest(project[0]),
+    downloadUrl: `https://fixtures.invalid/${id}.apk`,
+    category,
+  }
+}
 
 const publicApps = [
   app({
